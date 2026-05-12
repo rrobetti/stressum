@@ -1,0 +1,26 @@
+---
+description: stressum package pipeline, module roles, and Python conventions
+globs: src/stressum/**/*.py,tests/**/*.py
+alwaysApply: false
+---
+
+# stressum implementation standards
+
+## Module responsibilities (single pipeline)
+
+| Module | Responsibility |
+|--------|----------------|
+| `load.py` | `RunBundle`: `run_metadata.json`, sorted `replica-*/summary.json`, `node_metrics/**/*.csv` (keys = path relative to run root), `discover_hdr_logs`, optional `report.md`. |
+| `aggregate.py` | `aggregate_bundle` → `RunAggregates`; **sum** `achievedThroughputRps` across replicas; cross-replica latency summary = **median of per-replica** percentiles from JSON (not HDR merge). `node_metrics_numeric_summary` for tabular rollups. |
+| `tables.py` | CSV writers + `write_tables_readme` (`tables.md`) built from paths dict. |
+| `plots.py` | `matplotlib.use("Agg")` before importing `pyplot`; `apply_paper_style(seed=…)`; optional plots skip cleanly if data missing. |
+| `narrative.py` | `narrative.md` from bundle + aggregates + artifact list. |
+| `caveats.py` | Static caveat text + `hdr_status_note`; keep aligned with `stressar-docs/METRICS.md`. |
+| `cli.py` | Argparse, orchestration, exit `2` on missing run or zero summaries. |
+
+## Conventions for changes
+
+- New outputs: wire path in `cli.py`, include in `artifact_paths` passed to `write_narrative` / `write_tables_readme`, and extend `tests/test_cli.py` (or unit tests) using `tests/fixtures/minimal-run/` as needed.
+- Node CSV: read via `read_node_csv` (`comment="#"`); do not assume every bundle has the same CSV set—probe `RunBundle.node_metrics_csvs`.
+- Typing: `from __future__ import annotations`; use `TYPE_CHECKING` for imports only needed for types (see `plots.py`, `narrative.py`).
+- Tooling: `pyproject.toml` — Ruff line length **100**, rules `E`, `F`, `I`, `UP`; Python **≥3.11**; tests via `uv run pytest`, lint via `uv run ruff check src tests`.

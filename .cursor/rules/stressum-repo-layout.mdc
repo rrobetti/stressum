@@ -1,0 +1,29 @@
+---
+description: Top-level repo map, stressum I/O, and where to read first
+alwaysApply: true
+---
+
+# Repository map (stressar-results)
+
+Use this as the **orientation index** before searching the tree.
+
+## Top-level
+
+| Path | Role |
+|------|------|
+| `stressar-docs/` | Canonical Stressar specs: `RESULTS_FORMAT.md`, `METRICS.md`, `BENCHMARKING_GUIDE.md`, `README.md` (not a top-level `docs/`). |
+| `results/` | Exported run bundles: one folder per run (`run_metadata.json`, `replica-*/summary.json`, `node_metrics/`, optional `report.md`). |
+| `src/stressum/` | Installable package **`stressum`**: CLI + loaders + paper artifacts. |
+| `tests/` | Pytest; synthetic bundle at `tests/fixtures/minimal-run/`. |
+| `pyproject.toml` / `uv.lock` | `uv sync`; script entry `stressum = stressum.cli:main`. |
+
+## stressum CLI (one run in → paper out)
+
+- **Invoke:** `uv run stressum <run_dir>` (see root `README.md`).
+- **Default output:** `<run_dir>/paper/` (override `--out`). Key files: `replica_breakdown.csv`, `run_summary.csv`, `node_metrics_summary.csv` (if node CSVs exist), `tables.md`, `narrative.md`, PNGs unless `--no-plots`.
+
+## Cross-rules
+
+- **Bundle path meanings** when working under `results/**`: see `stressar-results-bundles.mdc`.
+- **Metric semantics / aggregation**: `stressar-docs-reference.mdc` + files under `stressar-docs/`.
+- **Code structure / module responsibilities**: `stressum-python-standards.mdc` (applies when editing `src/stressum/**` or `tests/**`).
