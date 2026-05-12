@@ -1,0 +1,3 @@
+timestamp,active_backends,numbackends
+2026-01-01T00:00:00Z,5,10
+2026-01-01T00:00:05Z,6,10

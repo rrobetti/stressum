@@ -1,0 +1,17 @@
+{
+  "runInfo": {
+    "sut": "OJP",
+    "workload": "W1_SIMPLE",
+    "loadMode": "open-loop",
+    "targetRps": 100,
+    "durationSeconds": 60,
+    "instanceId": 1,
+    "totalInstances": 2
+  },
+  "attemptedRps": 51.0,
+  "achievedThroughputRps": 50.5,
+  "errorRate": 0.02,
+  "totalRequests": 2000,
+  "failedRequests": 20,
+  "latencyMs": {"p50": 1.5, "p95": 2.5, "p99": 3.5, "p999": 4.5}
+}
