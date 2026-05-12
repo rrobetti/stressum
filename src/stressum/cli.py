@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from stressum.aggregate import aggregate_bundle, node_metrics_numeric_summary
@@ -23,6 +24,11 @@ from stressum.tables import (
 )
 
 
+def default_output_dir(run_dir: Path) -> Path:
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")
+    return run_dir / "output" / stamp
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -41,7 +47,10 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         default=None,
-        help="Output directory (default: <run_dir>/paper).",
+        help=(
+            "Output directory (default: <run_dir>/output/<YYYY-MM-dd-HHMMSS-microseconds>/ "
+            "per invocation)."
+        ),
     )
     parser.add_argument(
         "--no-plots",
@@ -67,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No replica summary.json files found under {run_dir}", file=sys.stderr)
         return 2
 
-    out_dir = args.out.expanduser().resolve() if args.out else (run_dir / "paper")
+    out_dir = args.out.expanduser().resolve() if args.out else default_output_dir(run_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     agg = aggregate_bundle(bundle)

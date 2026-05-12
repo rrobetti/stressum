@@ -20,7 +20,7 @@ Use this as the **orientation index** before searching the tree.
 ## stressum CLI (one run in → paper out)
 
 - **Invoke:** `uv run stressum <run_dir>` (see root `README.md`).
-- **Default output:** `<run_dir>/paper/` (override `--out`). Key files: `replica_breakdown.csv`, `run_summary.csv`, `node_metrics_summary.csv` (if node CSVs exist), `tables.md`, `narrative.md`, PNGs unless `--no-plots`.
+- **Default output:** `<run_dir>/output/<YYYY-MM-dd-HHMMSS-microseconds>/` (override `--out` for a fixed path). Key files: `replica_breakdown.csv`, `run_summary.csv`, `node_metrics_summary.csv` (if node CSVs exist), `tables.md`, `narrative.md`, PNGs unless `--no-plots`.
 
 ## Cross-rules
 

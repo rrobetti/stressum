@@ -16,11 +16,11 @@ uv sync
 uv run stressum results/ojp-prod-20260512-044306
 ```
 
-Artifacts are written to `<run-dir>/paper/` (override with `--out DIR`).
+Artifacts are written to `<run-dir>/output/<YYYY-MM-dd-HHMMSS-microseconds>/` (one folder per invocation). Override with `--out DIR` to write directly to `DIR`.
 
 Options:
 
-- `--out DIR` — output directory (default: `<run-dir>/paper`)
+- `--out DIR` — output directory (default: `<run-dir>/output/<timestamped subfolder>/`)
 - `--no-plots` — skip PNG generation
 - `--seed N` — RNG seed for deterministic styling where applicable
 
