@@ -137,8 +137,8 @@ def process_run(
 def main_compare(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Compare two or more Stressar run bundles from a JSON config file "
-            "(HDR merge across replicas per run when logs are present)."
+            "Default stressum mode: compare two or more Stressar run bundles from a JSON "
+            "config (HDR merge across replicas per run when logs are present)."
         ),
     )
     root = discover_stressum_repo_root()
@@ -189,17 +189,7 @@ def main_compare(argv: list[str] | None = None) -> int:
     return code
 
 
-def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "batch":
-        print(
-            "The `batch` subcommand was removed. Invoke `stressum` once per run directory.",
-            file=sys.stderr,
-        )
-        return 2
-    if argv and argv[0] == "compare":
-        return main_compare(argv[1:])
-
+def main_run(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Generate CSV/Markdown tables, PNG figures, and narrative from one Stressar run bundle."
@@ -244,6 +234,26 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         apply_plot_style=True,
     )
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "batch":
+        print(
+            "The `batch` subcommand was removed. Use `stressum run <run_dir>` once per bundle.",
+            file=sys.stderr,
+        )
+        return 2
+    if argv and argv[0] == "compare":
+        print(
+            "The `compare` subcommand was removed; cross-scenario comparison is the default. "
+            "Invoke `stressum` or `stressum --config …` (without `compare`).",
+            file=sys.stderr,
+        )
+        return 2
+    if argv and argv[0] == "run":
+        return main_run(argv[1:])
+    return main_compare(argv)
 
 
 if __name__ == "__main__":

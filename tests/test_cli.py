@@ -47,7 +47,7 @@ def _single_output_session(run_copy: Path) -> Path:
 def test_cli_writes_artifacts(tmp_path: Path) -> None:
     run_copy = tmp_path / "minimal-run"
     shutil.copytree(FIXTURE, run_copy)
-    code = main([str(run_copy), "--seed", "0"])
+    code = main(["run", str(run_copy), "--seed", "0"])
     assert code == 0
     out = _single_output_session(run_copy)
     assert (out / "narrative.md").is_file()
@@ -60,7 +60,7 @@ def test_cli_writes_artifacts(tmp_path: Path) -> None:
 def test_cli_no_plots(tmp_path: Path) -> None:
     run_copy = tmp_path / "minimal-run-np"
     shutil.copytree(FIXTURE, run_copy)
-    code = main([str(run_copy), "--no-plots"])
+    code = main(["run", str(run_copy), "--no-plots"])
     assert code == 0
     out = _single_output_session(run_copy)
     assert (out / "narrative.md").is_file()
@@ -72,6 +72,13 @@ def test_batch_subcommand_removed(capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 2
     err = capsys.readouterr().err
     assert "batch" in err.lower() and "removed" in err.lower()
+
+
+def test_compare_subcommand_removed(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(["compare"])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "compare" in err.lower() and "removed" in err.lower()
 
 
 def test_default_output_dir_uses_repo_output_when_run_inside_repo() -> None:
@@ -105,7 +112,7 @@ def test_compare_writes_artifacts(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     out = cfg_dir / "compare-out"
-    code = main(["compare", "--config", str(cfg_path), "--out", str(out), "--seed", "0"])
+    code = main(["--config", str(cfg_path), "--out", str(out), "--seed", "0"])
     assert code == 0
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     assert len(meta["scenarios"]) == 2
@@ -131,7 +138,7 @@ def test_compare_no_plots(tmp_path: Path) -> None:
     cfg_path = cfg_dir / "cfg.json"
     cfg_path.write_text(json.dumps({"runs": [{"path": "a"}, {"path": "b"}]}), encoding="utf-8")
     out = cfg_dir / "out-np"
-    code = main(["compare", "--config", str(cfg_path), "--out", str(out), "--no-plots"])
+    code = main(["--config", str(cfg_path), "--out", str(out), "--no-plots"])
     assert code == 0
     assert (out / "comparison_metadata.json").is_file()
     assert not (out / "comparison_latency_p50.png").exists()
@@ -153,7 +160,7 @@ def test_compare_hdr_merged_metadata(tmp_path: Path) -> None:
     cfg_path = cfg_dir / "cfg.json"
     cfg_path.write_text(json.dumps({"runs": [{"path": "ha"}, {"path": "hb"}]}), encoding="utf-8")
     out = cfg_dir / "out-hdr"
-    code = main(["compare", "--config", str(cfg_path), "--out", str(out)])
+    code = main(["--config", str(cfg_path), "--out", str(out)])
     assert code == 0
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     for sc in meta["scenarios"]:
@@ -163,14 +170,14 @@ def test_compare_hdr_merged_metadata(tmp_path: Path) -> None:
 
 
 def test_compare_missing_config(tmp_path: Path) -> None:
-    code = main(["compare", "--config", str(tmp_path / "missing.json")])
+    code = main(["--config", str(tmp_path / "missing.json")])
     assert code == 2
 
 
 def test_compare_config_requires_two_runs(tmp_path: Path) -> None:
     cfg = tmp_path / "bad.json"
     cfg.write_text(json.dumps({"runs": [{"path": "only-one"}]}), encoding="utf-8")
-    code = main(["compare", "--config", str(cfg)])
+    code = main(["--config", str(cfg)])
     assert code == 2
 
 
@@ -186,6 +193,6 @@ def test_compare_fairness_warning(tmp_path: Path) -> None:
     cfg_path = cfg_dir / "cfg.json"
     cfg_path.write_text(json.dumps({"runs": [{"path": "fa"}, {"path": "fb"}]}), encoding="utf-8")
     out = cfg_dir / "out-w"
-    assert main(["compare", "--config", str(cfg_path), "--out", str(out), "--no-plots"]) == 0
+    assert main(["--config", str(cfg_path), "--out", str(out), "--no-plots"]) == 0
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     assert any("workload" in w for w in meta["global_warnings"])

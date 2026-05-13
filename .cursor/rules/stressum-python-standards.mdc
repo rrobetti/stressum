@@ -16,7 +16,7 @@ alwaysApply: false
 | `plots.py` | `matplotlib.use("Agg")` before importing `pyplot`; `apply_paper_style(seed=…)`; optional plots skip cleanly if data missing. |
 | `narrative.py` | `narrative.md` from bundle + aggregates + artifact list. |
 | `caveats.py` | Static caveat text + `hdr_status_note`; keep aligned with `stressar-docs/METRICS.md`. |
-| `cli.py` | Argparse, orchestration, exit `2` on missing run or zero summaries; `compare` subcommand + `comparison_output_dir`. |
+| `cli.py` | Argparse, orchestration, exit `2` on missing run or zero summaries; default entry = comparison (`main_compare`); `run` for one bundle; reject legacy `batch` / `compare` tokens + `comparison_output_dir`. |
 | `hdr_merge.py` | Merge per-run HDR `.hlog` interval histograms across files; infer ns→ms divisor vs `summary.json` p50. |
 | `comparison.py` | Config JSON, `run_comparison`, `comparison_metadata.json` + `comparison_summary.csv`. |
 | `comparison_plots.py` | Cross-scenario matplotlib figures (throughput, latency, errors, optional PG/JVM/timeseries/open-loop). |

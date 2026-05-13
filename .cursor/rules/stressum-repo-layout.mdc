@@ -17,10 +17,10 @@ Use this as the **orientation index** before searching the tree.
 | `tests/` | Pytest; synthetic bundle at `tests/fixtures/minimal-run/`. |
 | `pyproject.toml` / `uv.lock` | `uv sync`; script entry `stressum = stressum.cli:main`. |
 
-## stressum CLI (one run in → paper out)
+## stressum CLI
 
-- **Invoke:** `uv run stressum <run_dir>` (see root `README.md`).
-- **Default output:** `<run_dir>/output/<YYYY-MM-dd-HHMMSS-microseconds>/` (override `--out` for a fixed path). Key files: `replica_breakdown.csv`, `run_summary.csv`, `node_metrics_summary.csv` (if node CSVs exist), `tables.md`, `narrative.md`, PNGs unless `--no-plots`.
+- **Default (comparison):** `uv run stressum` or `uv run stressum --config …` — cross-scenario artifacts under `output/comparison-<timestamp>/` (see root `README.md`).
+- **Single run:** `uv run stressum run <run_dir>` — default output `<run_dir>/output/<YYYY-MM-dd-HHMMSS-microseconds>/` when the bundle is outside the repo checkout, else `<repo>/output/<run-folder>/<timestamp>/` (override `--out`). Key files: `replica_breakdown.csv`, `run_summary.csv`, `node_metrics_summary.csv` (if node CSVs exist), `tables.md`, `narrative.md`, PNGs unless `--no-plots`.
 
 ## Cross-rules
 
