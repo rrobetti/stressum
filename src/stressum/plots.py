@@ -7,20 +7,21 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+
+from stressum.load import read_node_csv
+
+# Fixed RNG so matplotlib/numpy-backed styling is reproducible across runs.
+_PLOT_RNG_SEED = 0
 
 if TYPE_CHECKING:
     from stressum.aggregate import RunAggregates
     from stressum.load import RunBundle
 
-from stressum.load import read_node_csv
 
-
-def apply_paper_style(seed: int | None = None) -> None:
-    if seed is not None:
-        import numpy as np
-
-        np.random.seed(seed)
+def apply_paper_style() -> None:
+    np.random.seed(_PLOT_RNG_SEED)
     plt.rcParams.update(
         {
             "figure.dpi": 100,

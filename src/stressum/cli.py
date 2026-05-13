@@ -41,18 +41,7 @@ def main_compare(argv: list[str] | None = None) -> int:
             "cannot be detected). HDR merge across replicas per run when logs are present."
         ),
     )
-    parser.add_argument(
-        "--no-plots",
-        action="store_true",
-        help="Skip PNG figure generation.",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Optional RNG seed for deterministic plot styling.",
-    )
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)
 
     base = discover_stressum_repo_root() or Path.cwd()
     cfg_path = (base / "stressum-comparison.json").expanduser().resolve()
@@ -61,9 +50,9 @@ def main_compare(argv: list[str] | None = None) -> int:
         return 2
 
     out = comparison_output_dir()
-    apply_paper_style(seed=args.seed)
+    apply_paper_style()
 
-    code, _meta = run_comparison(cfg_path, out, no_plots=args.no_plots)
+    code, _meta = run_comparison(cfg_path, out)
     return code
 
 

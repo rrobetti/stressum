@@ -75,8 +75,6 @@ def _fairness_warnings(scenarios: list[dict[str, Any]]) -> list[str]:
 def run_comparison(
     config_path: Path,
     out_dir: Path,
-    *,
-    no_plots: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     """
     Execute multi-run comparison. Returns (exit_code, metadata_dict).
@@ -189,9 +187,7 @@ def run_comparison(
     global_warnings = _fairness_warnings(scenarios_plot)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    plot_paths: dict[str, Path] = {}
-    if not no_plots:
-        plot_paths = write_comparison_plots(scenarios_plot, out_dir)
+    plot_paths = write_comparison_plots(scenarios_plot, out_dir)
 
     try:
         stressum_ver = version("stressum")

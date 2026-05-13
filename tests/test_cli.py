@@ -79,7 +79,7 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         json.dumps({"runs": [{"path": "cmp-a"}, {"path": "cmp-b", "label": "B"}]}),
         encoding="utf-8",
     )
-    code = main(["--seed", "0"])
+    code = main([])
     assert code == 0
     out = _latest_comparison_out(tmp_path)
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
@@ -95,25 +95,6 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert (out / "comparison_pg_numbackends.png").is_file()
     assert (out / "comparison_postgres_process_cpu.png").is_file()
     assert (out / "comparison_postgres_process_rss.png").is_file()
-
-
-def test_compare_no_plots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
-    cfg_dir = tmp_path
-    run_a = cfg_dir / "a"
-    run_b = cfg_dir / "b"
-    shutil.copytree(FIXTURE, run_a)
-    shutil.copytree(FIXTURE, run_b)
-    cfg_path = cfg_dir / "stressum-comparison.json"
-    cfg_path.write_text(json.dumps({"runs": [{"path": "a"}, {"path": "b"}]}), encoding="utf-8")
-    code = main(["--no-plots"])
-    assert code == 0
-    out = _latest_comparison_out(tmp_path)
-    assert (out / "comparison_metadata.json").is_file()
-    assert not (out / "comparison_latency_p50.png").exists()
-    assert not (out / "comparison_latency_p95.png").exists()
-    assert not (out / "comparison_latency_p99.png").exists()
-    assert not (out / "comparison_latency_p999.png").exists()
 
 
 def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,7 +146,7 @@ def test_compare_fairness_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     (run_b / "replica-0" / "summary.json").write_text(json.dumps(summ), encoding="utf-8")
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(json.dumps({"runs": [{"path": "fa"}, {"path": "fb"}]}), encoding="utf-8")
-    assert main(["--no-plots"]) == 0
+    assert main([]) == 0
     out = _latest_comparison_out(tmp_path)
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     assert any("workload" in w for w in meta["global_warnings"])
