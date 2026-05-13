@@ -150,6 +150,9 @@ def test_compare_writes_artifacts(tmp_path: Path) -> None:
     assert (out / "comparison_latency_p95.png").is_file()
     assert (out / "comparison_latency_p99.png").is_file()
     assert (out / "comparison_latency_p999.png").is_file()
+    assert (out / "comparison_pg_numbackends.png").is_file()
+    assert (out / "comparison_postgres_process_cpu.png").is_file()
+    assert (out / "comparison_postgres_process_rss.png").is_file()
 
 
 def test_compare_no_plots(tmp_path: Path) -> None:

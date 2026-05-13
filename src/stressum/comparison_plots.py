@@ -126,6 +126,88 @@ def plot_comparison_pg_backends(
     return True
 
 
+def _pick_db_proc_path(bundle: RunBundle) -> Path | None:
+    for key, p in sorted(bundle.node_metrics_csvs.items()):
+        if key.endswith("db/db_proc_metrics.csv"):
+            return p
+    return None
+
+
+def _db_proc_time_series(path: Path, column: str) -> tuple[pd.Series, pd.Series] | None:
+    df = read_node_csv(path)
+    if "timestamp" not in df.columns or column not in df.columns:
+        return None
+    ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    y = pd.to_numeric(df[column], errors="coerce")
+    t0 = (ts - ts.min()).dt.total_seconds()
+    return t0, y
+
+
+def _plot_comparison_db_proc_series(
+    scenarios: list[tuple[str, RunBundle]],
+    out: Path,
+    *,
+    column: str,
+    ylabel: str,
+    color: str,
+    suptitle: str,
+) -> bool:
+    series_list: list[tuple[str, pd.Series, pd.Series]] = []
+    for label, bundle in scenarios:
+        p = _pick_db_proc_path(bundle)
+        if p is None:
+            continue
+        pr = _db_proc_time_series(p, column)
+        if pr is None:
+            continue
+        t0, y = pr
+        series_list.append((label, t0, y))
+    if not series_list:
+        return False
+    n = len(series_list)
+    fig, axes = plt.subplots(n, 1, figsize=(9, max(2.8, 2.4 * n)))
+    if n == 1:
+        axes = [axes]
+    for ax, (label, t0, y) in zip(axes, series_list, strict=True):
+        ax.plot(t0, y, color=color, linewidth=0.8)
+        ax.set_ylabel(ylabel)
+        ax.set_title(label)
+    axes[-1].set_xlabel("Time since sample start (s)")
+    fig.suptitle(suptitle, y=1.02)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+    return True
+
+
+def plot_comparison_postgres_process_cpu(
+    scenarios: list[tuple[str, RunBundle]],
+    out: Path,
+) -> bool:
+    return _plot_comparison_db_proc_series(
+        scenarios,
+        out,
+        column="cpu_pct",
+        ylabel="cpu_pct (%)",
+        color="darkorange",
+        suptitle="PostgreSQL server process CPU (db_proc_metrics.csv)",
+    )
+
+
+def plot_comparison_postgres_process_rss(
+    scenarios: list[tuple[str, RunBundle]],
+    out: Path,
+) -> bool:
+    return _plot_comparison_db_proc_series(
+        scenarios,
+        out,
+        column="rss_mb",
+        ylabel="rss_mb",
+        color="steelblue",
+        suptitle="PostgreSQL server process RSS (db_proc_metrics.csv)",
+    )
+
+
 def _pick_jvm_path(bundle: RunBundle) -> Path | None:
     for key, p in sorted(bundle.node_metrics_csvs.items()):
         if "jvm_metrics" in key.lower():
@@ -301,6 +383,14 @@ def write_comparison_plots(
     pg = out_dir / "comparison_pg_numbackends.png"
     if plot_comparison_pg_backends([(s["label"], s["bundle"]) for s in scenarios], pg):
         paths["comparison_pg_numbackends.png"] = pg
+
+    pg_cpu = out_dir / "comparison_postgres_process_cpu.png"
+    if plot_comparison_postgres_process_cpu([(s["label"], s["bundle"]) for s in scenarios], pg_cpu):
+        paths["comparison_postgres_process_cpu.png"] = pg_cpu
+
+    pg_rss = out_dir / "comparison_postgres_process_rss.png"
+    if plot_comparison_postgres_process_rss([(s["label"], s["bundle"]) for s in scenarios], pg_rss):
+        paths["comparison_postgres_process_rss.png"] = pg_rss
 
     jvm = out_dir / "comparison_jvm_heap.png"
     if plot_comparison_jvm_heap([(s["label"], s["bundle"]) for s in scenarios], jvm):

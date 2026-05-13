@@ -120,6 +120,7 @@ def run_comparison(
 
         has_pg = any(k.endswith("pg_metrics.csv") for k in bundle.node_metrics_csvs)
         has_jvm = any("jvm_metrics" in k.lower() for k in bundle.node_metrics_csvs)
+        has_db_proc = any(k.endswith("db/db_proc_metrics.csv") for k in bundle.node_metrics_csvs)
 
         scenario_meta: dict[str, Any] = {
             "label": label,
@@ -140,6 +141,7 @@ def run_comparison(
             "hdr_file_count": len(bundle.hdr_paths),
             "hdr_paths_used": list(merged.hdr_paths_used) if merged else [],
             "has_pg_metrics": has_pg,
+            "has_db_proc_metrics": has_db_proc,
             "has_jvm_metrics": has_jvm,
             "open_loop": ol_any,
             "open_loop_missed_opportunities_sum": ol_missed,
