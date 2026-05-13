@@ -24,34 +24,18 @@ def plot_comparison_throughput(
     plt.close(fig)
 
 
-def plot_comparison_latency(
+def plot_comparison_latency_percentile(
     labels: list[str],
-    p50: list[float],
-    p95: list[float],
-    p99: list[float],
-    p999: list[float],
+    values_ms: list[float],
+    percentile: str,
     title: str,
     out: Path,
 ) -> None:
-    n = len(labels)
-    width = 0.18
-    x = range(n)
-    fig, ax = plt.subplots(figsize=(max(8, n * 0.85), 4.0))
-    for i, (name, series) in enumerate(
-        [
-            ("p50", p50),
-            ("p95", p95),
-            ("p99", p99),
-            ("p999", p999),
-        ]
-    ):
-        offset = (i - 1.5) * width
-        ax.bar([xi + offset for xi in x], series, width=width, label=name)
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(labels, rotation=20, ha="right")
+    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    ax.bar(labels, values_ms, color="steelblue")
     ax.set_ylabel("Latency (ms)")
-    ax.set_title(title)
-    ax.legend(title="Percentile")
+    ax.set_title(f"{title} — {percentile}")
+    ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
     plt.close(fig)
@@ -275,9 +259,16 @@ def write_comparison_plots(
     plot_comparison_throughput(labels, totals, tp)
     paths["comparison_total_throughput.png"] = tp
 
-    lp = out_dir / "comparison_latency.png"
-    plot_comparison_latency(labels, p50, p95, p99, p999, lat_title, lp)
-    paths["comparison_latency.png"] = lp
+    for pct, series in (
+        ("p50", p50),
+        ("p95", p95),
+        ("p99", p99),
+        ("p999", p999),
+    ):
+        fname = f"comparison_latency_{pct}.png"
+        lp = out_dir / fname
+        plot_comparison_latency_percentile(labels, series, pct, lat_title, lp)
+        paths[fname] = lp
 
     ep = out_dir / "comparison_error_rate.png"
     plot_comparison_error_rate(labels, [s["agg"].aggregate_error_rate for s in scenarios], ep)

@@ -146,7 +146,10 @@ def test_compare_writes_artifacts(tmp_path: Path) -> None:
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
     assert (out / "comparison_total_throughput.png").is_file()
-    assert (out / "comparison_latency.png").is_file()
+    assert (out / "comparison_latency_p50.png").is_file()
+    assert (out / "comparison_latency_p95.png").is_file()
+    assert (out / "comparison_latency_p99.png").is_file()
+    assert (out / "comparison_latency_p999.png").is_file()
 
 
 def test_compare_no_plots(tmp_path: Path) -> None:
@@ -161,7 +164,10 @@ def test_compare_no_plots(tmp_path: Path) -> None:
     code = main(["compare", "--config", str(cfg_path), "--out", str(out), "--no-plots"])
     assert code == 0
     assert (out / "comparison_metadata.json").is_file()
-    assert not (out / "comparison_latency.png").exists()
+    assert not (out / "comparison_latency_p50.png").exists()
+    assert not (out / "comparison_latency_p95.png").exists()
+    assert not (out / "comparison_latency_p99.png").exists()
+    assert not (out / "comparison_latency_p999.png").exists()
 
 
 def test_compare_hdr_merged_metadata(tmp_path: Path) -> None:
