@@ -101,9 +101,24 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "total_completed_rps_sum" in summary.columns
     assert "open_loop" in summary.columns
     assert summary["open_loop"].all()
-    assert (out / "comparison_pg_numbackends.png").is_file()
-    assert (out / "comparison_postgres_process_cpu.png").is_file()
-    assert (out / "comparison_postgres_process_rss.png").is_file()
+    assert (out / "comparison_pg_numbackends" / "comparison_pg_numbackends__cmp-a.png").is_file()
+    assert (out / "comparison_pg_numbackends" / "comparison_pg_numbackends__B.png").is_file()
+    assert (
+        out / "comparison_postgres_process_cpu" / "comparison_postgres_process_cpu__cmp-a.png"
+    ).is_file()
+    assert (
+        out / "comparison_postgres_process_cpu" / "comparison_postgres_process_cpu__B.png"
+    ).is_file()
+    assert (
+        out / "comparison_postgres_process_rss" / "comparison_postgres_process_rss__cmp-a.png"
+    ).is_file()
+    assert (
+        out / "comparison_postgres_process_rss" / "comparison_postgres_process_rss__B.png"
+    ).is_file()
+    assert not (out / "comparison_pg_numbackends__cmp-a.png").exists()
+    assert not (out / "comparison_pg_numbackends.png").exists()
+    assert not (out / "comparison_postgres_process_cpu.png").exists()
+    assert not (out / "comparison_postgres_process_rss.png").exists()
 
 
 def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

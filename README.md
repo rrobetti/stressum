@@ -31,7 +31,7 @@ Output is written to `<project-root>/output/comparison-<YYYY-MM-dd-HHMMSS-micros
 
 - `comparison_metadata.json` — scenarios, paths, HDR merge status, fairness warnings when `workload` / `loadMode` / `targetRps` differ across runs
 - `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist)
-- PNG figures: total throughput, latency (HDR merged across replicas **within** each run when logs are present; otherwise median of `summary.json` percentiles), error rate, optional open-loop / PostgreSQL backends / JVM heap / timeseries plots when data exists. Plot styling uses a fixed NumPy RNG seed for reproducible figures.
+- PNG figures: total throughput, latency (HDR merged across replicas **within** each run when logs are present; otherwise median of `summary.json` percentiles), error rate, optional open-loop / timeseries plots when data exists. PostgreSQL backends, DB process CPU/RSS, JVM heap, and proxy-tier CPU figures are emitted **one PNG per configured label**, grouped in subfolders by chart type (e.g. `comparison_jvm_heap/`), when data exists. Plot styling uses a fixed NumPy RNG seed for reproducible figures.
 
 ## Interpretation
 

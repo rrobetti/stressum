@@ -216,7 +216,9 @@ def run_comparison(
     except PackageNotFoundError:
         stressum_ver = "0.0.0"
 
-    artifacts: dict[str, str] = {k: p.name for k, p in sorted(plot_paths.items())}
+    artifacts: dict[str, str] = {
+        k: p.relative_to(out_dir).as_posix() for k, p in sorted(plot_paths.items())
+    }
     artifacts["comparison_metadata.json"] = "comparison_metadata.json"
     artifacts["comparison_summary.csv"] = "comparison_summary.csv"
 

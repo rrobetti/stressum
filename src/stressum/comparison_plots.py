@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -7,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from stressum.aggregate import is_open_loop
+from stressum.aggregate import is_open_loop, proxy_tier_cpu_timeseries
 from stressum.load import RunBundle, read_node_csv
 
 
@@ -49,19 +50,20 @@ def plot_comparison_completed_throughput(
     plt.close(fig)
 
 
-def plot_comparison_proxy_service_cpu_aligned_peak(
-    labels: list[str],
-    aligned_peaks: list[float],
-    out: Path,
-) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
-    ax.bar(labels, aligned_peaks, color="darkorange")
-    ax.set_ylabel("service_cpu aligned_peak (%)")
-    ax.set_title("Proxy tier CPU — time-aligned peak sum")
-    ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+def _artifact_slug(label: str, bundle: RunBundle) -> str:
+    slug = re.sub(r"[^\w\-]+", "_", label.strip(), flags=re.UNICODE)
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug or bundle.run_dir.name
+
+
+def _per_scenario_filename(base: str, label: str, bundle: RunBundle) -> str:
+    return f"{base}__{_artifact_slug(label, bundle)}.png"
+
+
+def _per_scenario_output_path(
+    out_dir: Path, base: str, label: str, bundle: RunBundle
+) -> Path:
+    return out_dir / base / _per_scenario_filename(base, label, bundle)
 
 
 def plot_comparison_latency_percentile(
@@ -134,38 +136,6 @@ def _pg_backends_series(path: Path) -> tuple[pd.Series, pd.Series] | None:
     return t0, y
 
 
-def plot_comparison_pg_backends(
-    scenarios: list[tuple[str, RunBundle]],
-    out: Path,
-) -> bool:
-    series_list: list[tuple[str, pd.Series, pd.Series]] = []
-    for label, bundle in scenarios:
-        p = _pick_pg_path(bundle)
-        if p is None:
-            continue
-        pr = _pg_backends_series(p)
-        if pr is None:
-            continue
-        t0, y = pr
-        series_list.append((label, t0, y))
-    if not series_list:
-        return False
-    n = len(series_list)
-    fig, axes = plt.subplots(n, 1, figsize=(9, max(2.8, 2.4 * n)), sharex=False)
-    if n == 1:
-        axes = [axes]
-    for ax, (label, t0, y) in zip(axes, series_list, strict=True):
-        ax.plot(t0, y, color="darkgreen", linewidth=0.8)
-        ax.set_ylabel("backends")
-        ax.set_title(label)
-    axes[-1].set_xlabel("Time since run start (s)")
-    fig.suptitle("PostgreSQL backends (pg_metrics.csv)", y=1.02)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
-    return True
-
-
 def _pick_db_proc_path(bundle: RunBundle) -> Path | None:
     for key, p in sorted(bundle.node_metrics_csvs.items()):
         if key.endswith("db/db_proc_metrics.csv"):
@@ -183,71 +153,6 @@ def _db_proc_time_series(path: Path, column: str) -> tuple[pd.Series, pd.Series]
     return t0, y
 
 
-def _plot_comparison_db_proc_series(
-    scenarios: list[tuple[str, RunBundle]],
-    out: Path,
-    *,
-    column: str,
-    ylabel: str,
-    color: str,
-    suptitle: str,
-) -> bool:
-    series_list: list[tuple[str, pd.Series, pd.Series]] = []
-    for label, bundle in scenarios:
-        p = _pick_db_proc_path(bundle)
-        if p is None:
-            continue
-        pr = _db_proc_time_series(p, column)
-        if pr is None:
-            continue
-        t0, y = pr
-        series_list.append((label, t0, y))
-    if not series_list:
-        return False
-    n = len(series_list)
-    fig, axes = plt.subplots(n, 1, figsize=(9, max(2.8, 2.4 * n)))
-    if n == 1:
-        axes = [axes]
-    for ax, (label, t0, y) in zip(axes, series_list, strict=True):
-        ax.plot(t0, y, color=color, linewidth=0.8)
-        ax.set_ylabel(ylabel)
-        ax.set_title(label)
-    axes[-1].set_xlabel("Time since sample start (s)")
-    fig.suptitle(suptitle, y=1.02)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
-    return True
-
-
-def plot_comparison_postgres_process_cpu(
-    scenarios: list[tuple[str, RunBundle]],
-    out: Path,
-) -> bool:
-    return _plot_comparison_db_proc_series(
-        scenarios,
-        out,
-        column="cpu_pct",
-        ylabel="cpu_pct (%)",
-        color="darkorange",
-        suptitle="PostgreSQL server process CPU (db_proc_metrics.csv)",
-    )
-
-
-def plot_comparison_postgres_process_rss(
-    scenarios: list[tuple[str, RunBundle]],
-    out: Path,
-) -> bool:
-    return _plot_comparison_db_proc_series(
-        scenarios,
-        out,
-        column="rss_mb",
-        ylabel="rss_mb",
-        color="steelblue",
-        suptitle="PostgreSQL server process RSS (db_proc_metrics.csv)",
-    )
-
-
 def _pick_jvm_path(bundle: RunBundle) -> Path | None:
     for key, p in sorted(bundle.node_metrics_csvs.items()):
         if "jvm_metrics" in key.lower():
@@ -255,34 +160,117 @@ def _pick_jvm_path(bundle: RunBundle) -> Path | None:
     return None
 
 
-def plot_comparison_jvm_heap(
-    scenarios: list[tuple[str, RunBundle]],
-    out: Path,
-) -> bool:
-    series_list: list[tuple[str, pd.Series, pd.Series]] = []
-    for label, bundle in scenarios:
-        p = _pick_jvm_path(bundle)
-        if p is None:
-            continue
-        df = read_node_csv(p)
-        if "timestamp" not in df.columns or "heap_used_mb" not in df.columns:
-            continue
-        ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-        y = pd.to_numeric(df["heap_used_mb"], errors="coerce")
-        t0 = (ts - ts.min()).dt.total_seconds()
-        series_list.append((label, t0, y))
-    if not series_list:
+def plot_scenario_pg_backends(label: str, bundle: RunBundle, out: Path) -> bool:
+    p = _pick_pg_path(bundle)
+    if p is None:
         return False
-    n = len(series_list)
-    fig, axes = plt.subplots(n, 1, figsize=(9, max(2.8, 2.4 * n)))
-    if n == 1:
-        axes = [axes]
-    for ax, (label, t0, y) in zip(axes, series_list, strict=True):
-        ax.plot(t0, y, color="purple", linewidth=0.8)
-        ax.set_ylabel("heap_used_mb")
-        ax.set_title(label)
-    axes[-1].set_xlabel("Time since sample start (s)")
-    fig.suptitle("OJP / JVM heap (first proxy jvm_metrics.csv per run)", y=1.02)
+    pr = _pg_backends_series(p)
+    if pr is None:
+        return False
+    t0, y = pr
+    fig, ax = plt.subplots(figsize=(9, 2.8))
+    ax.plot(t0, y, color="darkgreen", linewidth=0.8)
+    ax.set_ylabel("backends")
+    ax.set_xlabel("Time since run start (s)")
+    ax.set_title(f"PostgreSQL backends (pg_metrics.csv) — {label}")
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+    return True
+
+
+def _plot_scenario_db_proc_series(
+    label: str,
+    bundle: RunBundle,
+    out: Path,
+    *,
+    column: str,
+    ylabel: str,
+    color: str,
+    title: str,
+) -> bool:
+    p = _pick_db_proc_path(bundle)
+    if p is None:
+        return False
+    pr = _db_proc_time_series(p, column)
+    if pr is None:
+        return False
+    t0, y = pr
+    fig, ax = plt.subplots(figsize=(9, 2.8))
+    ax.plot(t0, y, color=color, linewidth=0.8)
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("Time since sample start (s)")
+    ax.set_title(f"{title} — {label}")
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+    return True
+
+
+def plot_scenario_postgres_process_cpu(label: str, bundle: RunBundle, out: Path) -> bool:
+    return _plot_scenario_db_proc_series(
+        label,
+        bundle,
+        out,
+        column="cpu_pct",
+        ylabel="cpu_pct (%)",
+        color="darkorange",
+        title="PostgreSQL server process CPU (db_proc_metrics.csv)",
+    )
+
+
+def plot_scenario_postgres_process_rss(label: str, bundle: RunBundle, out: Path) -> bool:
+    return _plot_scenario_db_proc_series(
+        label,
+        bundle,
+        out,
+        column="rss_mb",
+        ylabel="rss_mb",
+        color="steelblue",
+        title="PostgreSQL server process RSS (db_proc_metrics.csv)",
+    )
+
+
+def plot_scenario_jvm_heap(label: str, bundle: RunBundle, out: Path) -> bool:
+    p = _pick_jvm_path(bundle)
+    if p is None:
+        return False
+    df = read_node_csv(p)
+    if "timestamp" not in df.columns or "heap_used_mb" not in df.columns:
+        return False
+    ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+    y = pd.to_numeric(df["heap_used_mb"], errors="coerce")
+    t0 = (ts - ts.min()).dt.total_seconds()
+    fig, ax = plt.subplots(figsize=(9, 2.8))
+    ax.plot(t0, y, color="purple", linewidth=0.8)
+    ax.set_ylabel("heap_used_mb")
+    ax.set_xlabel("Time since sample start (s)")
+    ax.set_title(f"OJP / JVM heap (first proxy jvm_metrics.csv per run) — {label}")
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+    return True
+
+
+def plot_scenario_proxy_service_cpu_aligned_peak(
+    label: str,
+    bundle: RunBundle,
+    out: Path,
+    *,
+    aligned_peak_pct: float | None = None,
+) -> bool:
+    ts = proxy_tier_cpu_timeseries(bundle)
+    if ts is None:
+        return False
+    t0, tier_sum, peak = ts
+    peak_pct = aligned_peak_pct if aligned_peak_pct is not None else peak
+    fig, ax = plt.subplots(figsize=(9, 2.8))
+    ax.plot(t0, tier_sum, color="darkorange", linewidth=0.8)
+    ax.set_ylabel("service_cpu sum (%)")
+    ax.set_xlabel("Time since sample start (s)")
+    ax.set_title(
+        f"Proxy tier CPU — time-aligned sum (aligned_peak={peak_pct:.1f}%) — {label}"
+    )
     fig.tight_layout()
     fig.savefig(out, format="png")
     plt.close(fig)
@@ -425,34 +413,34 @@ def write_comparison_plots(
         plot_comparison_open_loop(labels, missed_tot, delay_tot, op)
         paths["comparison_open_loop.png"] = op
 
-    proxy_labels: list[str] = []
-    proxy_peaks: list[float] = []
+    per_scenario_plots: list[tuple[str, Any]] = [
+        ("comparison_pg_numbackends", plot_scenario_pg_backends),
+        ("comparison_postgres_process_cpu", plot_scenario_postgres_process_cpu),
+        ("comparison_postgres_process_rss", plot_scenario_postgres_process_rss),
+        ("comparison_jvm_heap", plot_scenario_jvm_heap),
+    ]
     for s in scenarios:
+        label = s["label"]
+        bundle = s["bundle"]
+        for base, plot_fn in per_scenario_plots:
+            out = _per_scenario_output_path(out_dir, base, label, bundle)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            if plot_fn(label, bundle, out):
+                rel = out.relative_to(out_dir).as_posix()
+                paths[rel] = out
         proxy_cpu = s.get("proxy_cpu")
-        if proxy_cpu is None:
-            continue
-        proxy_labels.append(s["label"])
-        proxy_peaks.append(float(proxy_cpu["service_cpu_aligned_peak_pct"]))
-    if proxy_labels:
-        pp = out_dir / "comparison_proxy_service_cpu_aligned_peak.png"
-        plot_comparison_proxy_service_cpu_aligned_peak(proxy_labels, proxy_peaks, pp)
-        paths["comparison_proxy_service_cpu_aligned_peak.png"] = pp
-
-    pg = out_dir / "comparison_pg_numbackends.png"
-    if plot_comparison_pg_backends([(s["label"], s["bundle"]) for s in scenarios], pg):
-        paths["comparison_pg_numbackends.png"] = pg
-
-    pg_cpu = out_dir / "comparison_postgres_process_cpu.png"
-    if plot_comparison_postgres_process_cpu([(s["label"], s["bundle"]) for s in scenarios], pg_cpu):
-        paths["comparison_postgres_process_cpu.png"] = pg_cpu
-
-    pg_rss = out_dir / "comparison_postgres_process_rss.png"
-    if plot_comparison_postgres_process_rss([(s["label"], s["bundle"]) for s in scenarios], pg_rss):
-        paths["comparison_postgres_process_rss.png"] = pg_rss
-
-    jvm = out_dir / "comparison_jvm_heap.png"
-    if plot_comparison_jvm_heap([(s["label"], s["bundle"]) for s in scenarios], jvm):
-        paths["comparison_jvm_heap.png"] = jvm
+        if proxy_cpu is not None:
+            base = "comparison_proxy_service_cpu_aligned_peak"
+            out = _per_scenario_output_path(out_dir, base, label, bundle)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            if plot_scenario_proxy_service_cpu_aligned_peak(
+                label,
+                bundle,
+                out,
+                aligned_peak_pct=float(proxy_cpu["service_cpu_aligned_peak_pct"]),
+            ):
+                rel = out.relative_to(out_dir).as_posix()
+                paths[rel] = out
 
     ts = out_dir / "comparison_timeseries_rps_p99.png"
     if plot_comparison_timeseries_rps_p99([(s["label"], s["bundle"]) for s in scenarios], ts):

@@ -206,8 +206,10 @@ def _proxy_tier_proc_paths(bundle: RunBundle) -> list[Path]:
     return paths
 
 
-def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
-    """Time-aligned proxy tier CPU rollup (service_cpu from cpu_pct)."""
+def _proxy_tier_service_cpu_rollups(
+    bundle: RunBundle,
+) -> tuple[pd.Series, float, float, list[Path]] | None:
+    """Return (tier_sum series, aligned_peak, legacy_peak_sum, proc_paths) or None."""
     proc_paths = _proxy_tier_proc_paths(bundle)
     if not proc_paths:
         return None
@@ -238,6 +240,30 @@ def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
     combined = pd.concat(series_by_node, axis=1).fillna(0.0)
     tier_sum = combined.sum(axis=1)
     aligned_peak = float(tier_sum.max())
+    return tier_sum, aligned_peak, legacy_peak_sum, proc_paths
+
+
+def proxy_tier_cpu_timeseries(
+    bundle: RunBundle,
+) -> tuple[pd.Series, pd.Series, float] | None:
+    """Relative seconds, time-aligned proxy-tier service_cpu sum, and aligned peak."""
+    rollups = _proxy_tier_service_cpu_rollups(bundle)
+    if rollups is None:
+        return None
+    tier_sum, aligned_peak, _, _ = rollups
+    t0 = pd.Series(
+        (tier_sum.index - tier_sum.index.min()).total_seconds(),
+        index=tier_sum.index,
+    )
+    return t0, tier_sum, aligned_peak
+
+
+def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
+    """Time-aligned proxy tier CPU rollup (service_cpu from cpu_pct)."""
+    rollups = _proxy_tier_service_cpu_rollups(bundle)
+    if rollups is None:
+        return None
+    tier_sum, aligned_peak, legacy_peak_sum, proc_paths = rollups
 
     host_series: list[pd.Series] = []
     for path in proc_paths:

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stressum.aggregate import aggregate_bundle, is_open_loop, proxy_tier_cpu_summary
+from stressum.aggregate import (
+    aggregate_bundle,
+    is_open_loop,
+    proxy_tier_cpu_summary,
+    proxy_tier_cpu_timeseries,
+)
 from stressum.load import load_run_bundle
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "minimal-run"
@@ -58,3 +63,35 @@ def test_proxy_tier_cpu_aligned_peak(tmp_path: Path) -> None:
     assert summary is not None
     assert summary["service_cpu_aligned_peak_pct"] == 55.0
     assert summary["service_cpu_legacy_peak_sum_pct"] == 55.0
+
+
+def test_proxy_tier_cpu_timeseries(tmp_path: Path) -> None:
+    run_dir = tmp_path / "proxy-run"
+    proxy_dir = run_dir / "node_metrics" / "proxy"
+    proxy_dir.mkdir(parents=True)
+    csv_a = proxy_dir / "node-a_proc_metrics.csv"
+    csv_b = proxy_dir / "node-b_proc_metrics.csv"
+    csv_a.write_text(
+        "timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n"
+        "2026-01-01T00:00:00Z,1,10.0,20.0,100,200\n"
+        "2026-01-01T00:00:01Z,1,30.0,40.0,100,200\n",
+        encoding="utf-8",
+    )
+    csv_b.write_text(
+        "timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n"
+        "2026-01-01T00:00:00Z,2,5.0,10.0,100,200\n"
+        "2026-01-01T00:00:01Z,2,25.0,30.0,100,200\n",
+        encoding="utf-8",
+    )
+    bundle = load_run_bundle(FIXTURE)
+    bundle.run_dir = run_dir
+    bundle.node_metrics_csvs = {
+        "node_metrics/proxy/node-a_proc_metrics.csv": csv_a,
+        "node_metrics/proxy/node-b_proc_metrics.csv": csv_b,
+    }
+    ts = proxy_tier_cpu_timeseries(bundle)
+    assert ts is not None
+    t0, tier_sum, aligned_peak = ts
+    assert aligned_peak == 55.0
+    assert float(t0.iloc[-1]) == 1.0
+    assert float(tier_sum.iloc[-1]) == 55.0
