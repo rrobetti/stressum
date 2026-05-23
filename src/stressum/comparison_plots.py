@@ -4,8 +4,10 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
+from stressum.aggregate import is_open_loop
 from stressum.load import RunBundle, read_node_csv
 
 
@@ -13,11 +15,49 @@ def plot_comparison_throughput(
     labels: list[str],
     totals: list[float],
     out: Path,
+    *,
+    ylabel: str = "Successful throughput (sum of replicas, RPS)",
+    title: str = "Successful throughput by scenario",
 ) -> None:
     fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
     ax.bar(labels, totals, color="steelblue")
-    ax.set_ylabel("Total achieved RPS (sum of replicas)")
-    ax.set_title("Throughput by scenario")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.tick_params(axis="x", rotation=25)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def plot_comparison_completed_throughput(
+    labels: list[str],
+    successful: list[float],
+    errors: list[float],
+    out: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    x = np.arange(len(labels))
+    ax.bar(x, successful, label="Successful RPS", color="steelblue")
+    ax.bar(x, errors, bottom=successful, label="Error RPS", color="coral")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=25)
+    ax.set_ylabel("Completed throughput (sum of replicas, RPS)")
+    ax.set_title("Completed throughput by scenario (successful + error)")
+    ax.legend(loc="upper right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def plot_comparison_proxy_service_cpu_aligned_peak(
+    labels: list[str],
+    aligned_peaks: list[float],
+    out: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    ax.bar(labels, aligned_peaks, color="darkorange")
+    ax.set_ylabel("service_cpu aligned_peak (%)")
+    ax.set_title("Proxy tier CPU — time-aligned peak sum")
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -312,7 +352,8 @@ def write_comparison_plots(
     """scenarios: dicts with keys label, bundle, agg, merged (MergedLatency|None)."""
     paths: dict[str, Path] = {}
     labels = [s["label"] for s in scenarios]
-    totals = [s["agg"].total_achieved_rps for s in scenarios]
+    successful_totals = [s["agg"].total_successful_rps for s in scenarios]
+    error_totals = [s["agg"].total_error_rps for s in scenarios]
     p50, p95, p99, p999 = [], [], [], []
     for s in scenarios:
         m = s.get("merged")
@@ -338,8 +379,12 @@ def write_comparison_plots(
         lat_title = "Latency percentiles (median of per-replica summary.json)"
 
     tp = out_dir / "comparison_total_throughput.png"
-    plot_comparison_throughput(labels, totals, tp)
+    plot_comparison_throughput(labels, successful_totals, tp)
     paths["comparison_total_throughput.png"] = tp
+
+    cp = out_dir / "comparison_total_completed_rps.png"
+    plot_comparison_completed_throughput(labels, successful_totals, error_totals, cp)
+    paths["comparison_total_completed_rps.png"] = cp
 
     for pct, series in (
         ("p50", p50),
@@ -365,7 +410,7 @@ def write_comparison_plots(
         open_loop = False
         for summ in s["bundle"].summaries:
             ri = summ.get("runInfo") or {}
-            if ri.get("openLoop"):
+            if is_open_loop(ri):
                 open_loop = True
             missed += int(ri.get("openLoopMissedOpportunities") or 0)
             v = ri.get("openLoopSchedulingDelayMs")
@@ -379,6 +424,19 @@ def write_comparison_plots(
         op = out_dir / "comparison_open_loop.png"
         plot_comparison_open_loop(labels, missed_tot, delay_tot, op)
         paths["comparison_open_loop.png"] = op
+
+    proxy_labels: list[str] = []
+    proxy_peaks: list[float] = []
+    for s in scenarios:
+        proxy_cpu = s.get("proxy_cpu")
+        if proxy_cpu is None:
+            continue
+        proxy_labels.append(s["label"])
+        proxy_peaks.append(float(proxy_cpu["service_cpu_aligned_peak_pct"]))
+    if proxy_labels:
+        pp = out_dir / "comparison_proxy_service_cpu_aligned_peak.png"
+        plot_comparison_proxy_service_cpu_aligned_peak(proxy_labels, proxy_peaks, pp)
+        paths["comparison_proxy_service_cpu_aligned_peak.png"] = pp
 
     pg = out_dir / "comparison_pg_numbackends.png"
     if plot_comparison_pg_backends([(s["label"], s["bundle"]) for s in scenarios], pg):

@@ -6,12 +6,30 @@
     "targetRps": 100,
     "durationSeconds": 60,
     "instanceId": 0,
-    "totalInstances": 2
+    "totalInstances": 2,
+    "openLoopMissedOpportunities": 2,
+    "openLoopSchedulingDelayMs": 0.5
   },
   "attemptedRps": 50.0,
   "achievedThroughputRps": 49.5,
+  "successfulThroughputRps": 49.5,
+  "errorThroughputRps": 0.5,
+  "totalThroughputRps": 50.0,
   "errorRate": 0.01,
   "totalRequests": 1000,
+  "successfulRequests": 990,
   "failedRequests": 10,
-  "latencyMs": {"p50": 1.0, "p95": 2.0, "p99": 3.0, "p999": 4.0}
+  "latencyMs": {
+    "p50": 1.0,
+    "p95": 2.0,
+    "p99": 3.0,
+    "p999": 4.0,
+    "mean": 1.2,
+    "meanSuccessful": 1.1,
+    "meanFailed": 5.0,
+    "meanTotal": 1.2
+  },
+  "errorsByType": {
+    "SQLTimeoutException": 10
+  }
 }

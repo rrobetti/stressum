@@ -10,8 +10,24 @@
   },
   "attemptedRps": 51.0,
   "achievedThroughputRps": 50.5,
+  "successfulThroughputRps": 50.0,
+  "errorThroughputRps": 0.5,
+  "totalThroughputRps": 50.5,
   "errorRate": 0.02,
   "totalRequests": 2000,
+  "successfulRequests": 1960,
   "failedRequests": 20,
-  "latencyMs": {"p50": 1.5, "p95": 2.5, "p99": 3.5, "p999": 4.5}
+  "latencyMs": {
+    "p50": 1.5,
+    "p95": 2.5,
+    "p99": 3.5,
+    "p999": 4.5,
+    "mean": 1.6,
+    "meanSuccessful": 1.5,
+    "meanFailed": 6.0,
+    "meanTotal": 1.6
+  },
+  "errorsByType": {
+    "PSQLException": 20
+  }
 }

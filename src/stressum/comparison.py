@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-from stressum.aggregate import aggregate_bundle
+from stressum.aggregate import aggregate_bundle, is_open_loop, proxy_tier_cpu_summary
 from stressum.comparison_plots import write_comparison_plots
 from stressum.hdr_merge import merge_run_histogram
 from stressum.load import RunBundle, load_run_bundle
@@ -46,13 +46,20 @@ def _open_loop_totals(bundle: RunBundle) -> tuple[bool, int, float]:
     any_open = False
     for summ in bundle.summaries:
         ri = summ.get("runInfo") or {}
-        if ri.get("openLoop"):
+        if is_open_loop(ri):
             any_open = True
         missed += int(ri.get("openLoopMissedOpportunities") or 0)
         v = ri.get("openLoopSchedulingDelayMs")
         if isinstance(v, (int, float)):
             delay += float(v)
     return any_open, missed, delay
+
+
+def _top_error_types(errors_by_type: dict[str, int], limit: int = 5) -> str:
+    if not errors_by_type:
+        return ""
+    ranked = sorted(errors_by_type.items(), key=lambda x: (-x[1], x[0]))[:limit]
+    return "; ".join(f"{name}:{count}" for name, count in ranked)
 
 
 def _fairness_warnings(scenarios: list[dict[str, Any]]) -> list[str]:
@@ -108,6 +115,7 @@ def run_comparison(
             return 2, {}
 
         agg = aggregate_bundle(bundle)
+        proxy_cpu = proxy_tier_cpu_summary(bundle)
         ref_p50 = agg.median_p50_ms
         merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
         latency_source = "hdr_merged" if merged is not None else "summary_json_median"
@@ -131,9 +139,14 @@ def run_comparison(
                 "loadMode": first_ri.get("loadMode"),
                 "targetRps": first_ri.get("targetRps"),
             },
-            "total_achieved_rps": agg.total_achieved_rps,
+            "total_achieved_rps": agg.total_successful_rps,
+            "total_successful_rps": agg.total_successful_rps,
+            "total_error_rps": agg.total_error_rps,
+            "total_completed_rps": agg.total_completed_rps,
             "total_attempted_rps": agg.total_attempted_rps,
             "aggregate_error_rate": agg.aggregate_error_rate,
+            "errors_by_type": agg.errors_by_type,
+            "top_error_types": _top_error_types(agg.errors_by_type),
             "median_replica_p50_ms": agg.median_p50_ms,
             "latency_percentiles_source": latency_source,
             "hdr_file_count": len(bundle.hdr_paths),
@@ -146,6 +159,14 @@ def run_comparison(
             "open_loop_scheduling_delay_ms_sum": ol_delay,
             "warnings": list(hdr_warnings),
         }
+        if proxy_cpu is not None:
+            scenario_meta["proxy_tier_cpu"] = proxy_cpu
+            scenario_meta["proxy_service_cpu_aligned_peak_pct"] = proxy_cpu[
+                "service_cpu_aligned_peak_pct"
+            ]
+            scenario_meta["proxy_service_cpu_legacy_peak_sum_pct"] = proxy_cpu[
+                "service_cpu_legacy_peak_sum_pct"
+            ]
         if merged is not None:
             scenario_meta["merged_latency_ms"] = {
                 "p50": merged.p50_ms,
@@ -157,7 +178,7 @@ def run_comparison(
 
         scenarios_payload.append(scenario_meta)
 
-        row = run_summary_dict(bundle, agg)
+        row = run_summary_dict(bundle, agg, proxy_cpu=proxy_cpu, open_loop=ol_any)
         row["comparison_label"] = label
         row["comparison_path_resolved"] = str(run_path)
         row["latency_percentiles_source"] = latency_source
@@ -181,6 +202,7 @@ def run_comparison(
                 "bundle": bundle,
                 "agg": agg,
                 "merged": merged,
+                "proxy_cpu": proxy_cpu,
             }
         )
 

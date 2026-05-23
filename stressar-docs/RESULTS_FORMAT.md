@@ -7,6 +7,7 @@ Complete reference for result data schemas, file formats, and metric calculation
 > used for per-interval vs. cumulative measurements.
 
 ## Table of Contents
+
 - [Results Directory Structure](#results-directory-structure)
 - [Timeseries CSV Format](#timeseries-csv-format)
 - [Summary JSON Schema](#summary-json-schema)
@@ -73,24 +74,26 @@ results/
 ## Timeseries CSV Format
 
 ### File Location
+
 `instance_{id}/timeseries.csv`
 
 ### Purpose
+
 Per-second metrics captured during the benchmark steady-state phase.
 
 ### Column Schema
 
-| Column Name | Type | Unit | Description |
-|-------------|------|------|-------------|
-| `timestamp_iso` | String | ISO 8601 | Timestamp of metric snapshot (e.g., `2024-02-18T14:30:45Z`) |
-| `attempted_rps` | Double | req/sec | Target RPS (open-loop) or offered load (closed-loop) |
-| `achieved_rps` | Double | req/sec | Actual completed requests per second |
-| `errors` | Integer | count | Number of failed requests in this second |
-| `p50_ms` | Double | milliseconds | 50th percentile (median) latency |
-| `p95_ms` | Double | milliseconds | 95th percentile latency |
-| `p99_ms` | Double | milliseconds | 99th percentile latency |
-| `p999_ms` | Double | milliseconds | 99.9th percentile latency |
-| `max_ms` | Double | milliseconds | Maximum latency observed in this second |
+| Column Name     | Type    | Unit         | Description                                                 |
+| --------------- | ------- | ------------ | ----------------------------------------------------------- |
+| `timestamp_iso` | String  | ISO 8601     | Timestamp of metric snapshot (e.g., `2024-02-18T14:30:45Z`) |
+| `attempted_rps` | Double  | req/sec      | Target RPS (open-loop) or offered load (closed-loop)        |
+| `achieved_rps`  | Double  | req/sec      | Actual completed requests per second                        |
+| `errors`        | Integer | count        | Number of failed requests in this second                    |
+| `p50_ms`        | Double  | milliseconds | 50th percentile (median) latency                            |
+| `p95_ms`        | Double  | milliseconds | 95th percentile latency                                     |
+| `p99_ms`        | Double  | milliseconds | 99th percentile latency                                     |
+| `p999_ms`       | Double  | milliseconds | 99.9th percentile latency                                   |
+| `max_ms`        | Double  | milliseconds | Maximum latency observed in this second                     |
 
 ### Example Data
 
@@ -104,12 +107,14 @@ timestamp_iso,attempted_rps,achieved_rps,errors,p50_ms,p95_ms,p99_ms,p999_ms,max
 ```
 
 ### Notes
+
 - Rows are written in real-time (streamed, not buffered)
 - Sampling interval controlled by `metricsIntervalSeconds` (default: 1 second)
 - Latencies calculated from HDR histogram snapshots
 - Only includes steady-state phase (excludes warmup and cooldown)
 
 ### Data Size
+
 - Approximately **100-150 bytes per row**
 - For 600-second test: ~600 rows = **60-90 KB per instance**
 - For 16 replicas: **1-1.5 MB total**
@@ -119,9 +124,11 @@ timestamp_iso,attempted_rps,achieved_rps,errors,p50_ms,p95_ms,p99_ms,p999_ms,max
 ## Summary JSON Schema
 
 ### File Location
+
 `instance_{id}/summary.json`
 
 ### Purpose
+
 Aggregate statistics for the entire benchmark run.
 
 ### Schema
@@ -140,7 +147,10 @@ Aggregate statistics for the entire benchmark run.
     "durationSeconds": number           // Measurement duration
   },
   "attemptedRps": number,               // Average attempted RPS
-  "achievedThroughputRps": number,      // Average achieved RPS
+  "achievedThroughputRps": number,      // Backward-compatible alias of successfulThroughputRps
+  "successfulThroughputRps": number,    // Average successful RPS
+  "errorThroughputRps": number,         // Average failed-request RPS
+  "totalThroughputRps": number,         // Average total completed RPS
   "errorRate": number,                  // Fraction of failed requests (0.0-1.0)
   "latencyMs": {
     "p50": number,                      // Median latency (ms)
@@ -148,13 +158,13 @@ Aggregate statistics for the entire benchmark run.
     "p99": number,                      // 99th percentile latency (ms)
     "p999": number,                     // 99.9th percentile latency (ms)
     "max": number,                      // Maximum latency (ms)
-    "mean": number                      // Mean latency (ms)
+    "mean": number,                     // Mean latency across all requests (ms)
+    "meanSuccessful": number,           // Mean latency for successful requests only (ms)
+    "meanFailed": number,               // Mean latency for failed requests only (ms)
+    "meanTotal": number                 // Mean latency across successful+failed requests (ms)
   },
   "errorsByType": {
-    "timeout": number,                  // Connection/query timeouts
-    "sql_exception": number,            // SQL errors (deadlock, constraint violation, etc.)
-    "connection_error": number,         // Connection acquisition failures
-    "unknown": number                   // Uncategorized errors
+    "<ExceptionClassSimpleName>": number // Count grouped by Java exception class type
   },
   "appCpuMedian": number,               // Median application CPU usage (%)
   "appRssMedian": number,               // Median application RSS memory (MB)
@@ -185,20 +195,25 @@ Aggregate statistics for the entire benchmark run.
   },
   "attemptedRps": 500.0,
   "achievedThroughputRps": 499.85,
+  "successfulThroughputRps": 499.85,
+  "errorThroughputRps": 0.1,
+  "totalThroughputRps": 499.95,
   "errorRate": 0.0002,
   "latencyMs": {
     "p50": 2.18,
     "p95": 8.67,
     "p99": 16.23,
     "p999": 38.45,
-    "max": 78.90,
-    "mean": 4.52
+    "max": 78.9,
+    "mean": 4.53,
+    "meanSuccessful": 4.52,
+    "meanFailed": 7.1,
+    "meanTotal": 4.53
   },
   "errorsByType": {
-    "timeout": 5,
-    "sql_exception": 2,
-    "connection_error": 0,
-    "unknown": 3
+    "SQLTimeoutException": 5,
+    "PSQLException": 2,
+    "IllegalStateException": 3
   },
   "appCpuMedian": 45.2,
   "appRssMedian": 512,
@@ -215,6 +230,7 @@ Aggregate statistics for the entire benchmark run.
 ### Field Descriptions
 
 #### `runInfo` Section
+
 - **`sut`**: System Under Test (connection mode)
 - **`workload`**: Workload type executed
 - **`loadMode`**: Load generation mode
@@ -226,26 +242,35 @@ Aggregate statistics for the entire benchmark run.
 - **`durationSeconds`**: Duration of measurement phase
 
 #### Throughput Metrics
+
 - **`attemptedRps`**: Average requests/sec attempted (open-loop target)
-- **`achievedThroughputRps`**: Average requests/sec completed successfully
+- **`successfulThroughputRps`**: Average successful requests/sec
+- **`errorThroughputRps`**: Average failed requests/sec
+- **`totalThroughputRps`**: Average total completed requests/sec (`successful + failed`)
+- **`achievedThroughputRps`**: Backward-compatible alias of `successfulThroughputRps`
 - **`errorRate`**: Fraction of requests that failed (0.0 to 1.0)
 
 #### Latency Metrics (`latencyMs`)
+
 All values in milliseconds, calculated from HDR histogram over entire run:
+
 - **`p50`**: Median latency (50% of requests faster)
 - **`p95`**: 95th percentile (95% of requests faster)
 - **`p99`**: 99th percentile (99% of requests faster)
 - **`p999`**: 99.9th percentile (tail latency)
 - **`max`**: Maximum latency observed
-- **`mean`**: Arithmetic mean latency
+- **`meanSuccessful`**: Arithmetic mean latency for successful requests only
+- **`meanFailed`**: Arithmetic mean latency for failed requests only
+- **`meanTotal`**: Arithmetic mean latency across successful + failed requests
+- **`mean`**: Backward-compatible alias for `meanTotal`
 
 #### Error Breakdown (`errorsByType`)
-- **`timeout`**: Connection acquisition or query timeouts
-- **`sql_exception`**: SQL errors (deadlock, constraint violation, etc.)
-- **`connection_error`**: Failed to acquire connection from pool
-- **`unknown`**: Uncategorized errors
+
+- Keys are Java exception class simple names (for example `SQLTimeoutException`, `PSQLException`, `IllegalStateException`)
+- Counts are grouped by exception class type only (messages do not create separate groups)
 
 #### System Metrics
+
 - **`appCpuMedian`**: Median CPU usage of application process (%)
 - **`appRssMedian`**: Median Resident Set Size memory (MB)
 - **`gcPauseMsTotal`**: Total time spent in GVM garbage collection (ms)
@@ -254,6 +279,7 @@ All values in milliseconds, calculated from HDR histogram over entire run:
 - **`dbIdleConnectionsMedian`**: Median number of idle connections in pool
 
 #### Request Counts
+
 - **`totalRequests`**: Total requests attempted
 - **`successfulRequests`**: Requests completed successfully
 - **`failedRequests`**: Requests that encountered errors
@@ -263,15 +289,19 @@ All values in milliseconds, calculated from HDR histogram over entire run:
 ## HDR Histogram Log Format
 
 ### File Location
+
 `instance_{id}/latency.hdr`
 
 ### Purpose
+
 High Dynamic Range (HDR) histogram for precise percentile analysis.
 
 ### Format
+
 Binary format defined by HdrHistogram library (https://hdrhistogram.github.io/HdrHistogram/).
 
 ### Key Features
+
 - **Precision:** 3 significant digits
 - **Range:** Up to 60 seconds (60,000 milliseconds)
 - **Memory:** Constant space, regardless of observation count
@@ -280,11 +310,13 @@ Binary format defined by HdrHistogram library (https://hdrhistogram.github.io/Hd
 ### Usage with HdrHistogram Tools
 
 #### View Percentiles
+
 ```bash
 java -jar HdrHistogram.jar -i latency.hdr -o percentiles.txt
 ```
 
 **Example Output:**
+
 ```
 Value     Percentile  TotalCount  1/(1-Percentile)
 0.500     0.000000    1           1.00
@@ -297,11 +329,13 @@ Value     Percentile  TotalCount  1/(1-Percentile)
 ```
 
 #### Generate Latency Distribution Chart
+
 ```bash
 java -jar HdrHistogram.jar -i latency.hdr -o latency_chart.png -chart
 ```
 
 #### Merge Multiple Histograms
+
 ```bash
 # Merge from all replicas
 java -jar HdrHistogram.jar \
@@ -333,9 +367,11 @@ print(f"P50: {p50}ms, P95: {p95}ms, P99: {p99}ms, P99.9: {p999}ms")
 ## Metadata JSON
 
 ### File Location
+
 `instance_{id}/metadata.json`
 
 ### Purpose
+
 Captures configuration and environment details for reproducibility.
 
 ### Schema
@@ -413,9 +449,11 @@ Captures configuration and environment details for reproducibility.
 ## Aggregated Results Format
 
 ### File Location (Multi-Instance)
+
 `aggregated/{timestamp}/{connectionMode}/{workloadType}/aggregated_summary.json`
 
 ### Purpose
+
 Combined metrics from all replica instances.
 
 ### Schema
@@ -445,10 +483,7 @@ Combined metrics from all replica instances.
     },
     "totalErrors": number,                // Sum across all replicas
     "errorsByType": {
-      "timeout": number,
-      "sql_exception": number,
-      "connection_error": number,
-      "unknown": number
+      "<ExceptionClassSimpleName>": number
     }
   },
   "perInstanceMetrics": [
@@ -489,16 +524,15 @@ Combined metrics from all replica instances.
     },
     "totalErrors": 192,
     "errorsByType": {
-      "timeout": 128,
-      "sql_exception": 42,
-      "connection_error": 8,
-      "unknown": 14
+      "SQLTimeoutException": 128,
+      "PSQLException": 42,
+      "IllegalStateException": 22
     }
   },
   "perInstanceMetrics": [
     {
       "instanceId": 0,
-      "achievedRps": 499.80,
+      "achievedRps": 499.8,
       "errorRate": 0.0002,
       "p95Ms": 8.67
     },
@@ -516,16 +550,19 @@ Combined metrics from all replica instances.
 ### Aggregation Methodology
 
 #### Throughput (Additive)
+
 ```
 totalAchievedRps = sum(instance[i].achievedRps for i in 0..N-1)
 ```
 
 #### Error Rate (Weighted Average)
+
 ```
 overallErrorRate = sum(instance[i].failedRequests) / sum(instance[i].totalRequests)
 ```
 
 #### Latency Percentiles (Weighted Average)
+
 ```
 p95 = sum(instance[i].p95 * instance[i].totalRequests) / sum(instance[i].totalRequests)
 ```
@@ -537,12 +574,15 @@ p95 = sum(instance[i].p95 * instance[i].totalRequests) / sum(instance[i].totalRe
 ## Environment Snapshot
 
 ### File Location
+
 `env_snapshot.json`
 
 ### Purpose
+
 Capture system and environment information for reproducibility and troubleshooting.
 
 ### Command
+
 ```bash
 bench env-snapshot --output results/my-run/
 ```
@@ -648,17 +688,20 @@ bench env-snapshot --output results/my-run/
 ### Throughput Metrics
 
 #### Attempted RPS
+
 ```
 attemptedRps = targetRps  (open-loop)
 attemptedRps = number of requests attempted / durationSeconds  (closed-loop)
 ```
 
 #### Achieved RPS
+
 ```
 achievedRps = successfulRequests / durationSeconds
 ```
 
 #### Error Rate
+
 ```
 errorRate = failedRequests / totalRequests
 ```
@@ -668,6 +711,7 @@ errorRate = failedRequests / totalRequests
 All latencies calculated from HdrHistogram recorded during the measurement phase.
 
 #### Percentiles
+
 ```
 p50 = histogram.getValueAtPercentile(50.0)
 p95 = histogram.getValueAtPercentile(95.0)
@@ -677,14 +721,20 @@ max = histogram.getMaxValue()
 ```
 
 #### Mean
+
 ```
-mean = histogram.getMean()
+meanSuccessful = histogram.getMean()
+meanFailed = sum(failedLatencyNanos) / failedRequests
+meanTotal = (sum(successLatencyNanos) + sum(failedLatencyNanos)) / totalRequests
+mean = meanTotal
 ```
 
 ### System Metrics
 
 #### CPU Usage
+
 Sampled every second using OSHI library:
+
 ```java
 cpu = osBean.getSystemCpuLoad() * 100
 ```
@@ -692,7 +742,9 @@ cpu = osBean.getSystemCpuLoad() * 100
 Reported as **median** over measurement period to reduce impact of spikes.
 
 #### Memory (RSS)
+
 Resident Set Size in megabytes:
+
 ```java
 rss = osBean.getCommittedVirtualMemorySize() / (1024 * 1024)
 ```
@@ -700,6 +752,7 @@ rss = osBean.getCommittedVirtualMemorySize() / (1024 * 1024)
 Reported as **median** over measurement period.
 
 #### GC Pause Time
+
 ```java
 gcPauseMsTotal = sum(gc.getCollectionTime() for gc in ManagementFactory.getGarbageCollectorMXBeans())
 gcPauseCount = sum(gc.getCollectionCount() for gc in ManagementFactory.getGarbageCollectorMXBeans())
@@ -708,6 +761,7 @@ gcPauseCount = sum(gc.getCollectionCount() for gc in ManagementFactory.getGarbag
 #### Database Connections
 
 Queried from HikariCP pool stats:
+
 ```java
 dbActiveConnections = hikariPool.getActiveConnections()
 dbIdleConnections = hikariPool.getIdleConnections()
@@ -722,6 +776,7 @@ Reported as **median** over measurement period.
 ### Analyzing Single-Instance Results
 
 #### Quick Summary
+
 ```bash
 # View summary JSON
 jq '.' results/raw/*/HIKARI_DIRECT/W2_MIXED/instance_0/summary.json
@@ -731,6 +786,7 @@ jq '.achievedThroughputRps, .errorRate, .latencyMs.p95' summary.json
 ```
 
 #### Plot Timeseries
+
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -754,6 +810,7 @@ plt.savefig('latency_over_time.png')
 ```
 
 #### Check for Degradation
+
 ```python
 # Check if P95 increases over time (performance degradation)
 import numpy as np
@@ -830,6 +887,7 @@ cat sweep_results.csv
 ### Exporting for Analysis Tools
 
 #### Export to Prometheus Format
+
 ```bash
 # Convert timeseries.csv to Prometheus exposition format
 cat timeseries.csv | awk -F',' 'NR>1 {
@@ -840,6 +898,7 @@ cat timeseries.csv | awk -F',' 'NR>1 {
 ```
 
 #### Export to InfluxDB Line Protocol
+
 ```bash
 # Convert timeseries.csv to InfluxDB format
 cat timeseries.csv | awk -F',' 'NR>1 {
@@ -867,18 +926,22 @@ cat timeseries.csv | awk -F',' 'NR>1 {
 ## Troubleshooting
 
 ### Missing Columns in Timeseries CSV
+
 **Cause:** Old version of benchmark tool
 **Solution:** Rebuild tool (`./gradlew build`) and re-run
 
 ### Empty Summary JSON
+
 **Cause:** Benchmark crashed or was interrupted
 **Solution:** Check logs, ensure sufficient warmup/cooldown time
 
 ### HDR Histogram Errors
+
 **Cause:** Corrupted or incomplete HDR file
 **Solution:** Re-run benchmark, ensure disk space available
 
 ### Inconsistent Metrics Across Replicas
+
 **Cause:** System resource contention (CPU, disk I/O)
 **Solution:** Run replicas on separate machines or reduce concurrency
 
@@ -886,6 +949,7 @@ cat timeseries.csv | awk -F',' 'NR>1 {
 
 ## Next Steps
 
-- Interpret workloads, SUTs, and protocols with [BENCHMARKING_GUIDE.md](BENCHMARKING_GUIDE.md)
-- Map measured quantities to definitions in [METRICS.md](METRICS.md)
-- Consult HdrHistogram documentation for advanced percentile analysis when working with `.hdr` logs
+- Review [RUNBOOK.md](RUNBOOK.md) for operational guide
+- Review [CONFIG.md](CONFIG.md) for configuration reference
+- See `examples/` directory for configuration templates
+- Consult HdrHistogram documentation for advanced percentile analysis

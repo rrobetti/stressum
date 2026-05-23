@@ -5,6 +5,7 @@ import re
 import shutil
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from stressum.cli import (
@@ -88,10 +89,18 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
     assert (out / "comparison_total_throughput.png").is_file()
+    assert (out / "comparison_total_completed_rps.png").is_file()
+    assert (out / "comparison_open_loop.png").is_file()
     assert (out / "comparison_latency_p50.png").is_file()
     assert (out / "comparison_latency_p95.png").is_file()
     assert (out / "comparison_latency_p99.png").is_file()
     assert (out / "comparison_latency_p999.png").is_file()
+    summary = pd.read_csv(out / "comparison_summary.csv")
+    assert "total_successful_rps_sum" in summary.columns
+    assert "total_error_rps_sum" in summary.columns
+    assert "total_completed_rps_sum" in summary.columns
+    assert "open_loop" in summary.columns
+    assert summary["open_loop"].all()
     assert (out / "comparison_pg_numbackends.png").is_file()
     assert (out / "comparison_postgres_process_cpu.png").is_file()
     assert (out / "comparison_postgres_process_rss.png").is_file()

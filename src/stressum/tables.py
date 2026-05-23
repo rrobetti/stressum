@@ -34,10 +34,16 @@ def write_replica_csv(agg: RunAggregates, out: Path) -> None:
     pd.DataFrame(agg.rows).to_csv(out, index=False)
 
 
-def run_summary_dict(bundle: RunBundle, agg: RunAggregates) -> dict[str, Any]:
+def run_summary_dict(
+    bundle: RunBundle,
+    agg: RunAggregates,
+    *,
+    proxy_cpu: dict[str, float] | None = None,
+    open_loop: bool = False,
+) -> dict[str, Any]:
     meta = bundle.metadata or {}
     first = bundle.summaries[0].get("runInfo") or {} if bundle.summaries else {}
-    return {
+    row: dict[str, Any] = {
         "run_dir": bundle.run_dir.name,
         "scenario": meta.get("scenario"),
         "bench_replica_count": meta.get("bench_replica_count"),
@@ -46,16 +52,38 @@ def run_summary_dict(bundle: RunBundle, agg: RunAggregates) -> dict[str, Any]:
         "workload": first.get("workload"),
         "load_mode": first.get("loadMode"),
         "target_rps_per_replica": first.get("targetRps"),
-        "total_achieved_rps_sum": agg.total_achieved_rps,
+        "open_loop": open_loop,
+        "total_achieved_rps_sum": agg.total_successful_rps,
+        "total_successful_rps_sum": agg.total_successful_rps,
+        "total_error_rps_sum": agg.total_error_rps,
+        "total_completed_rps_sum": agg.total_completed_rps,
         "total_attempted_rps_sum": agg.total_attempted_rps,
         "total_requests": agg.total_requests,
+        "total_successful_requests": agg.total_successful_requests,
         "total_failed_requests": agg.total_failed,
         "aggregate_error_rate": agg.aggregate_error_rate,
+        "top_error_types": _format_top_errors(agg.errors_by_type),
         "median_replica_p50_ms": agg.median_p50_ms,
         "median_replica_p95_ms": agg.median_p95_ms,
         "median_replica_p99_ms": agg.median_p99_ms,
         "median_replica_p999_ms": agg.median_p999_ms,
     }
+    if proxy_cpu is not None:
+        row["proxy_service_cpu_aligned_peak_pct"] = proxy_cpu["service_cpu_aligned_peak_pct"]
+        row["proxy_service_cpu_legacy_peak_sum_pct"] = proxy_cpu[
+            "service_cpu_legacy_peak_sum_pct"
+        ]
+    else:
+        row["proxy_service_cpu_aligned_peak_pct"] = ""
+        row["proxy_service_cpu_legacy_peak_sum_pct"] = ""
+    return row
+
+
+def _format_top_errors(errors_by_type: dict[str, int], limit: int = 5) -> str:
+    if not errors_by_type:
+        return ""
+    ranked = sorted(errors_by_type.items(), key=lambda x: (-x[1], x[0]))[:limit]
+    return "; ".join(f"{name}:{count}" for name, count in ranked)
 
 
 def write_run_summary_row(

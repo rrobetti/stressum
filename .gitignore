@@ -8,3 +8,4 @@ dist/
 *.egg-info/
 results/*/paper/
 results/*/output/
+.DS_Store

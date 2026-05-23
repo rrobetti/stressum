@@ -4,7 +4,9 @@ CAVEATS_MARKDOWN = """
 ## Measurement caveats (summary)
 
 - **Aggregate throughput:** Reported system throughput is the **sum** of per-replica
-  `achievedThroughputRps`, not the mean across replicas.
+  `successfulThroughputRps` (or the backward-compatible alias `achievedThroughputRps`),
+  not the mean across replicas. Use `totalThroughputRps` (or successful + error RPS) for
+  all completed operations including failures.
 - **Latency percentiles across replicas:** Merging independent latency distributions
   requires **HDR histogram bucket merge**. Averaging or taking the median of
   per-replica percentiles is **not** equivalent to a global percentile over all

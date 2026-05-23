@@ -1,20 +1,20 @@
-# OJP and PgBouncer Benchmarking Guide
+# Reference Benchmarking Guide for JDBC Workloads
 
 ## Purpose
 
-This document provides a complete, step-by-step protocol for benchmarking OJP (Open J Proxy)
-and PgBouncer using Stressar. It specifies the deployment topology,
-hardware requirements, software configuration, workload definitions, load levels, acceptance
-criteria, and analysis procedures required to produce data suitable for publication in a
-peer-reviewed venue.
+This document provides a complete, step-by-step protocol for running reproducible JDBC workload
+stress tests with Stressar. It specifies deployment topology, hardware requirements, software
+configuration, workload definitions, load levels, acceptance criteria, and analysis procedures for
+the bundled PostgreSQL reference scenarios. The same workflow can be adapted to other
+JDBC-capable databases and middleware topologies.
 
 All instructions are prescriptive. Deviations from the specified configuration must be documented
 in the experimental report along with a justification.
 
-> **Why were these specific values chosen?** This guide states the prescriptive protocol constants
-> (client count, connection budgets, per-replica RPS targets, warmup/SLO windows, and so on). A
-> separate parameter-rationale document may exist in the upstream Stressar repository; this copy
-> keeps only material needed to **read and compare** exported results.
+> **Why were these specific values chosen?** The reasoning behind every numeric constant in this
+> guide — 16 client processes, 300 direct connections / 48 proxy backend connections, 63 RPS per
+> replica, 300 s warmup, 50 ms SLO, and all others — is documented in
+> **[PARAMETER_DECISIONS.md](PARAMETER_DECISIONS.md)**.
 
 **Core design constraints (non-negotiable):**
 
@@ -30,14 +30,14 @@ in the experimental report along with a justification.
    the connection-fragmentation pattern of a real microservice deployment. Every scenario runs
    **16 independent `bench` JVM processes** (8 on each of two identical load-generator machines,
    LG-1 and LG-2), each
-    representing one microservice replica.
+   representing one microservice replica.
 
 ---
 
 ## Benchmark Philosophy: Production Topology, Not Equal Knobs
 
-This benchmark compares realistic production topologies rather than artificially identical network
-paths or identical client-side settings.
+This reference benchmark compares realistic production JDBC topologies rather than artificially
+identical network paths or identical client-side settings.
 
 - **HikariCP direct baseline (`hikari-prod`)** models a common elastic microservice architecture:
   each replica owns a local JDBC pool, so total possible PostgreSQL connections grow as replicas
@@ -49,11 +49,15 @@ paths or identical client-side settings.
   pools, PgBouncer consolidates backend PostgreSQL connections, and HAProxy handles multi-node
   PgBouncer load balancing/HA.
 
+These three scenarios are the current bundled reference topologies. Additional JDBC-capable
+databases, drivers, and proxy layers can be added using the same workload and measurement model.
+
 OJP is intentionally not placed behind HAProxy for topology symmetry. Client-side balancing and
 failover are part of the OJP JDBC driver model.
 
 All results must report both configured and observed backend PostgreSQL connections. Proxy-tier
-resource usage must be summed across all required components for each topology:
+resource usage is computed as a time-aligned sum across required components for each topology
+(`max_t(sum cpu_pct)` for aligned peak; report also includes legacy non-time-aligned peak-sum):
 
 - OJP proxy tier = OJP-1 + OJP-2 + OJP-3
 - PgBouncer proxy tier = HAProxy + PgBouncer-1 + PgBouncer-2 + PgBouncer-3
@@ -159,8 +163,7 @@ graph TD
 
 > **Note on OJP port:** The OJP gRPC server listens on port **1059** by default (not 5432).
 > The OJP JDBC URL uses the format `jdbc:ojp[host:1059,...]_postgresql://dbhost:5432/db`.
-> Exact OJP JDBC URL syntax is defined by the OJP JDBC driver (upstream project); the pattern above
-> is the shape Stressar uses in configs and reports.
+> See [install/OJP.md](install/OJP.md) for the exact driver URL syntax.
 
 ### SUT-A — Baseline Topology (HikariCP Disciplined, 16 clients, no proxy)
 
@@ -176,15 +179,15 @@ graph TD
 
 **Machine roles — all scenarios:**
 
-| Label | Role | Scenarios |
-|-------|------|-----------|
-| LG-1  | Load generator machine 1 — runs 8 bench JVM replicas (JVM 0–7); identical role to LG-2 | All |
-| LG-2  | Load generator machine 2 — runs 8 bench JVM replicas (JVM 8–15); identical role to LG-1 | All |
-| LB    | HAProxy load balancer — distributes connections to 3 × PgBouncer | SUT-C only |
-| PROXY-1 | Connection proxy (instance 1) — runs PgBouncer or OJP | SUT-B, SUT-C |
-| PROXY-2 | Connection proxy (instance 2) — runs PgBouncer or OJP | SUT-B, SUT-C |
-| PROXY-3 | Connection proxy (instance 3) — runs PgBouncer or OJP | SUT-B, SUT-C |
-| DB    | Database server — runs PostgreSQL | All |
+| Label   | Role                                                                                    | Scenarios    |
+| ------- | --------------------------------------------------------------------------------------- | ------------ |
+| LG-1    | Load generator machine 1 — runs 8 bench JVM replicas (JVM 0–7); identical role to LG-2  | All          |
+| LG-2    | Load generator machine 2 — runs 8 bench JVM replicas (JVM 8–15); identical role to LG-1 | All          |
+| LB      | HAProxy load balancer — distributes connections to 3 × PgBouncer                        | SUT-C only   |
+| PROXY-1 | Connection proxy (instance 1) — runs PgBouncer or OJP                                   | SUT-B, SUT-C |
+| PROXY-2 | Connection proxy (instance 2) — runs PgBouncer or OJP                                   | SUT-B, SUT-C |
+| PROXY-3 | Connection proxy (instance 3) — runs PgBouncer or OJP                                   | SUT-B, SUT-C |
+| DB      | Database server — runs PostgreSQL                                                       | All          |
 
 Each of the three proxy instances (SUT-B OJP, SUT-C PgBouncer) maintains an independent backend
 connection pool of **16 connections** to PostgreSQL, giving a total of **48 backend connections**
@@ -207,14 +210,14 @@ bottleneck. LG-1 and LG-2 are both required for **all scenarios** (SUT-A, SUT-B,
 
 ### 2.1 Load Generator (LG-1 and LG-2)
 
-| Component | Specification |
-|-----------|---------------|
-| CPU | 8 physical cores, ≥3.0 GHz base clock (e.g., Intel Xeon E-2288G or AMD EPYC 7302P) |
-| RAM | 32 GB ECC DDR4-2666 |
-| Network | 10 GbE NIC (single port, direct-attached to switch) |
-| Storage | Any (not performance-critical for LG-1/LG-2) |
-| OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
-| JVM | OpenJDK 21.0.x, G1GC, `-Xms4g -Xmx8g -XX:+UseG1GC` |
+| Component | Specification                                                                      |
+| --------- | ---------------------------------------------------------------------------------- |
+| CPU       | 8 physical cores, ≥3.0 GHz base clock (e.g., Intel Xeon E-2288G or AMD EPYC 7302P) |
+| RAM       | 32 GB ECC DDR4-2666                                                                |
+| Network   | 10 GbE NIC (single port, direct-attached to switch)                                |
+| Storage   | Any (not performance-critical for LG-1/LG-2)                                       |
+| OS        | Ubuntu 22.04 LTS, kernel 5.15 or later                                             |
+| JVM       | OpenJDK 21.0.x, G1GC, `-Xms4g -Xmx8g -XX:+UseG1GC`                                 |
 
 Both LG-1 and LG-2 use this identical specification. LG-1 runs bench JVM replicas (JVM 0–7) and
 LG-2 runs bench JVM replicas (JVM 8–15). Each replica uses approximately 500 MB heap,
@@ -228,13 +231,13 @@ Three identical machines. The same machines are reused for both SUT-B (OJP) and 
 (PgBouncer) — stop one service and start the other between scenario runs to control for
 hardware variation.
 
-| Component | Specification |
-|-----------|---------------|
-| CPU | 8 physical cores, ≥3.0 GHz base clock |
-| RAM | 16 GB ECC DDR4-2666 |
-| Network | 10 GbE NIC |
-| Storage | Any |
-| OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
+| Component | Specification                          |
+| --------- | -------------------------------------- |
+| CPU       | 8 physical cores, ≥3.0 GHz base clock  |
+| RAM       | 16 GB ECC DDR4-2666                    |
+| Network   | 10 GbE NIC                             |
+| Storage   | Any                                    |
+| OS        | Ubuntu 22.04 LTS, kernel 5.15 or later |
 
 PgBouncer is single-threaded; a single core at 3 GHz can sustain approximately 50,000 simple
 transactions per second. The 8-core specification allows headroom for the OS and network interrupt
@@ -245,27 +248,27 @@ handling. OJP is multi-threaded (Netty event loops) and benefits from additional
 The load balancer is **only required for SUT-C (PgBouncer)**. OJP (SUT-B) performs
 client-side load balancing via the OJP JDBC driver; no dedicated LB machine is needed for SUT-B.
 
-| Component | Specification |
-|-----------|---------------|
-| CPU | 4 physical cores, ≥2.5 GHz base clock |
-| RAM | 8 GB DDR4 |
-| Network | 10 GbE NIC |
-| Storage | Any |
-| OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
-| Software | HAProxy 2.8 or later |
+| Component | Specification                          |
+| --------- | -------------------------------------- |
+| CPU       | 4 physical cores, ≥2.5 GHz base clock  |
+| RAM       | 8 GB DDR4                              |
+| Network   | 10 GbE NIC                             |
+| Storage   | Any                                    |
+| OS        | Ubuntu 22.04 LTS, kernel 5.15 or later |
+| Software  | HAProxy 2.8 or later                   |
 
 HAProxy in TCP mode adds less than 0.05 ms round-trip overhead on a 10 GbE LAN.
 
 ### 2.4 Database Server (DB)
 
-| Component | Specification |
-|-----------|---------------|
-| CPU | 16 physical cores, ≥3.0 GHz base clock (e.g., AMD EPYC 7302P × 2) |
-| RAM | 128 GB ECC DDR4-3200 |
-| Storage (data) | NVMe SSD, ≥1 TB, ≥500 K random IOPS (e.g., Samsung PM9A3, Intel P5800X) |
-| Storage (WAL) | Separate NVMe SSD, ≥200 GB (prevents WAL writes from competing with data reads) |
-| Network | 10 GbE NIC |
-| OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
+| Component      | Specification                                                                   |
+| -------------- | ------------------------------------------------------------------------------- |
+| CPU            | 16 physical cores, ≥3.0 GHz base clock (e.g., AMD EPYC 7302P × 2)               |
+| RAM            | 128 GB ECC DDR4-3200                                                            |
+| Storage (data) | NVMe SSD, ≥1 TB, ≥500 K random IOPS (e.g., Samsung PM9A3, Intel P5800X)         |
+| Storage (WAL)  | Separate NVMe SSD, ≥200 GB (prevents WAL writes from competing with data reads) |
+| Network        | 10 GbE NIC                                                                      |
+| OS             | Ubuntu 22.04 LTS, kernel 5.15 or later                                          |
 
 **Rationale for 128 GB RAM:** The large dataset used in this benchmark (see Section 8) is
 approximately 22 GB. Allocating 64 GB to `shared_buffers` ensures that steady-state queries
@@ -277,46 +280,47 @@ to 8 GB and document this deviation.
 
 ## 3. Software Installation
 
-> **Note (this repo):** The sections below describe how the **reference benchmark environment** is
-> built so you can interpret results and reproduce methodology. Step-by-step install docs for Java,
-> PostgreSQL, HAProxy, PgBouncer, and OJP are maintained in the **upstream Stressar / harness
-> repository**, not in this results-analysis project.
+> **Detailed installation guides** for each component are available in
+> [docs/install/](install/README.md). This section summarises the commands needed for the benchmark
+> environment; consult the linked guides for troubleshooting and alternative installation methods.
 
 ### 3.1 Build the Benchmark Tool
 
-> **Prerequisites:** Java 11+ and the Gradle wrapper from the benchmark harness checkout.
+> **Prerequisites:** [Java 11+](install/JAVA.md) must be installed. Gradle is downloaded
+> automatically by the `./gradlew` wrapper — see [install/GRADLE.md](install/GRADLE.md).
 
 On LG-1 and LG-2 (run the same commands on both machines):
 
 ```bash
-git clone https://github.com/rrobetti/ojp-performance-tester-tool.git
-cd ojp-performance-tester-tool
+git clone https://github.com/rrobetti/stressar.git
+cd stressar
 ./gradlew installDist
-export BENCH="$(pwd)/build/install/ojp-performance-tester/bin/bench"
+export BENCH="$(pwd)/build/install/stressar/bin/bench"
 ```
 
 Verify:
+
 ```bash
 $BENCH --version
 ```
 
 ### 3.2 Install PostgreSQL 16 on DB
 
-> Use your OS packaging or upstream PostgreSQL install docs; tuning values in this section matter
-> for interpreting “all in memory” assumptions in steady-state runs.
+> Full installation and configuration instructions: [install/POSTGRESQL.md](install/POSTGRESQL.md)
 
 ```bash
 sudo apt-get install -y postgresql-16 postgresql-16-contrib
 ```
 
 Verify:
+
 ```bash
 psql --version   # Must report 16.x
 ```
 
 ### 3.3 Install HAProxy on LB (T3 only)
 
-> HAProxy is required only for the PgBouncer multi-node topology below.
+> Full installation and configuration instructions: [install/HAPROXY.md](install/HAPROXY.md)
 
 The load balancer is only needed for the T3 (PgBouncer) scenario. Skip this section for T4.
 
@@ -349,14 +353,14 @@ backend pgbouncer_back
 ```
 
 Reload HAProxy after configuration changes:
+
 ```bash
 sudo systemctl reload haproxy
 ```
 
 ### 3.4 Install PgBouncer on PROXY-1, PROXY-2, PROXY-3
 
-> Follow pgBouncer packaging and configuration for your environment; the benchmark expects
-> transaction-pooling mode toward PostgreSQL as described later in this guide.
+> Full installation and configuration instructions: [install/PGBOUNCER.md](install/PGBOUNCER.md)
 
 > **Note:** pgBouncer is installed on the **same PROXY-1/2/3 machines** used for OJP (SUT-B). No
 > additional nodes are required for SUT-C. Stop the OJP service before starting pgBouncer on those
@@ -370,8 +374,7 @@ pgbouncer --version  # Must report 1.21 or later
 
 ### 3.5 Install OJP on PROXY-1, PROXY-2, PROXY-3
 
-> Follow the OJP server installation instructions from the OJP project; Stressar expects gRPC on
-> the default OJP port (see note above) and PostgreSQL on 5432 on the DB host.
+> Full installation and configuration instructions: [install/OJP.md](install/OJP.md)
 
 Follow the OJP project installation instructions on each of PROXY-1, PROXY-2, and PROXY-3. OJP
 must be reachable on port 5432 on each machine.
@@ -521,6 +524,7 @@ sudo systemctl enable pgbouncer
 ```
 
 Verify each instance from LG-1:
+
 ```bash
 psql -h <PROXY1_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 psql -h <PROXY2_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
@@ -528,6 +532,7 @@ psql -h <PROXY3_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
 Verify via load balancer:
+
 ```bash
 # Repeat several times to confirm least-connections distribution across instances
 psql -h <LB_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
@@ -569,8 +574,8 @@ at the client side:
 jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb
 ```
 
-Consult the OJP JDBC driver documentation from the OJP project for exact URL syntax and driver
-properties.
+Consult the OJP JDBC driver documentation at [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md)
+for the exact URL syntax and driver properties.
 
 ---
 
@@ -584,7 +589,8 @@ SUT-C additionally requires **HAProxy on the LB node**; OJP (SUT-B) does not use
 
 ### Stop OJP → Start pgBouncer + HAProxy (switching to SUT-C)
 
-Run on each of PROXY-1, PROXY-2, PROXY-3 (or automate with your deployment tooling):
+Run on each of PROXY-1, PROXY-2, PROXY-3 (or use Ansible — see
+[ansible/README.md § Switching](../ansible/README.md#switching-between-ojp-sut-b-and-pgbouncer-sut-c)):
 
 ```bash
 # On each of PROXY-1, PROXY-2, PROXY-3:
@@ -605,7 +611,7 @@ ss -tlnp | grep 6432   # Should show pgbouncer
 psql -h 127.0.0.1 -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
-Then on the **LB node**, install and start HAProxy (§ 3.3):
+Then on the **LB node**, install and start HAProxy (§ 3.3, [install/HAPROXY.md](install/HAPROXY.md)):
 
 ```bash
 # On LB:
@@ -670,14 +676,14 @@ $BENCH init-db \
   --seed     42
 ```
 
-| Table | Row count | Approximate size |
-|-------|-----------|-----------------|
-| accounts | 1,000,000 | ~150 MB |
-| items | 100,000 | ~15 MB |
-| orders | 10,000,000 | ~2 GB |
-| order_lines (avg 3 per order) | ~30,000,000 | ~8 GB |
-| Indexes | — | ~12 GB |
-| **Total** | | **~22 GB** |
+| Table                         | Row count   | Approximate size |
+| ----------------------------- | ----------- | ---------------- |
+| accounts                      | 1,000,000   | ~150 MB          |
+| items                         | 100,000     | ~15 MB           |
+| orders                        | 10,000,000  | ~2 GB            |
+| order_lines (avg 3 per order) | ~30,000,000 | ~8 GB            |
+| Indexes                       | —           | ~12 GB           |
+| **Total**                     |             | **~22 GB**       |
 
 Verify row counts:
 
@@ -702,6 +708,7 @@ psql -h <DB_IP> -U benchuser -d benchdb -c "ANALYZE;"
 Before any benchmark run, capture the full environment on every machine:
 
 **On LG-1 and LG-2** (run on both machines, adjusting the label):
+
 ```bash
 $BENCH env-snapshot \
   --output results/env/ \
@@ -710,6 +717,7 @@ $BENCH env-snapshot \
 ```
 
 **On DB:**
+
 ```bash
 $BENCH env-snapshot \
   --output results/env/ \
@@ -718,6 +726,7 @@ $BENCH env-snapshot \
 ```
 
 **On PROXY-1, PROXY-2, PROXY-3:**
+
 ```bash
 # Run on each proxy machine (adjust label accordingly)
 $BENCH env-snapshot \
@@ -737,6 +746,7 @@ ojp-server --version >> results/env/proxy-versions.txt  # Adjust to actual OJP b
 ```
 
 Record the HAProxy version on LB (SUT-C only):
+
 ```bash
 haproxy -v >> results/env/lb-version.txt
 ```
@@ -756,6 +766,7 @@ L = λ × W
 ```
 
 Where:
+
 - **L** = average number of requests in the system (connections actively executing a query)
 - **λ** = average throughput (transactions per second, TPS)
 - **W** = average time a request spends in the system (seconds per transaction)
@@ -771,12 +782,12 @@ Rearranged to find maximum throughput:
 The backend connection count differs between SUT-A (direct pooling) and the proxy SUTs (SUT-B,
 SUT-C):
 
-| Parameter | SUT-A (HikariCP direct) | SUT-B / SUT-C (Proxy) | Notes |
-|-----------|------------------------|----------------------|-------|
-| `L_max` (backend connections) | **300** | **48** | SUT-A: 16 × 19 ≈ 304 ≈ 300 direct. Proxy: 3 nodes × 16 = 48 (one per DB CPU core per node). |
-| `W_avg` (mean query time) | **~3–5 ms** | **~3–5 ms** | W2_MIXED on 16-core NVMe-backed DB with 64 GB `shared_buffers`; working set ≈22 GB fits entirely in cache. |
-| `λ_max` (connection-limited) | **60,000–100,000 TPS** | **9,600–16,000 TPS** | L / W = 300 / 0.005–0.003 for SUT-A; 48 / 0.005–0.003 for proxy. |
-| DB CPU limit (16 cores, W2_MIXED) | **~15,000–30,000 TPS** | **~15,000–30,000 TPS** | Same hardware for all SUTs. |
+| Parameter                         | SUT-A (HikariCP direct) | SUT-B / SUT-C (Proxy)  | Notes                                                                                                      |
+| --------------------------------- | ----------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `L_max` (backend connections)     | **300**                 | **48**                 | SUT-A: 16 × 19 ≈ 304 ≈ 300 direct. Proxy: 3 nodes × 16 = 48 (one per DB CPU core per node).                |
+| `W_avg` (mean query time)         | **~3–5 ms**             | **~3–5 ms**            | W2_MIXED on 16-core NVMe-backed DB with 64 GB `shared_buffers`; working set ≈22 GB fits entirely in cache. |
+| `λ_max` (connection-limited)      | **60,000–100,000 TPS**  | **9,600–16,000 TPS**   | L / W = 300 / 0.005–0.003 for SUT-A; 48 / 0.005–0.003 for proxy.                                           |
+| DB CPU limit (16 cores, W2_MIXED) | **~15,000–30,000 TPS**  | **~15,000–30,000 TPS** | Same hardware for all SUTs.                                                                                |
 
 ### Bottleneck Identification
 
@@ -858,21 +869,21 @@ negligible contention.
 
 All test scenarios share the following global parameters unless explicitly overridden:
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| `clients` | 16 (8 on LG-1, 8 on LG-2) | Simulate 16 microservice replicas; realistic multi-tenant deployment |
-| `dbConnectionBudget` | 300 (SUT-A: 19 × 16 ≈ 304 direct) / 48 (proxy SUTs: 3 × 16) | SUT-A uses full direct pool; proxy SUTs multiplex onto optimal backend pool |
-| `targetRpsPerClient` | 63 | 16 × 63 ≈ 1,000 RPS aggregate baseline |
-| `warmupSeconds` | 300 | Primes PostgreSQL buffer pool and JIT compiler |
-| `durationSeconds` | 1800 | Steady-state measurement window |
-| `cooldownSeconds` | 120 | Allows queues and connection states to drain |
-| `repeatCount` | 5 | Enables median p95 computation across runs |
-| `seed` | 42 | Reproducible parameter distribution |
-| `useZipf` | false | Uniform distribution (cache-warm scenario) |
-| `metricsIntervalSeconds` | 1 | Per-second timeseries resolution |
-| `sloP95Ms` | 50 | SLO threshold: 50 ms at p95 |
-| `errorRateThreshold` | 0.001 | Maximum tolerated error rate: 0.1 % |
-| TLS / SSL | **not used** | All legs are plaintext; TLS overhead is excluded as a variable |
+| Parameter                | Value                                                       | Rationale                                                                   |
+| ------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `clients`                | 16 (8 on LG-1, 8 on LG-2)                                   | Simulate 16 microservice replicas; realistic multi-tenant deployment        |
+| `dbConnectionBudget`     | 300 (SUT-A: 19 × 16 ≈ 304 direct) / 48 (proxy SUTs: 3 × 16) | SUT-A uses full direct pool; proxy SUTs multiplex onto optimal backend pool |
+| `targetRpsPerClient`     | 63                                                          | 16 × 63 ≈ 1,000 RPS aggregate baseline                                      |
+| `warmupSeconds`          | 300                                                         | Primes PostgreSQL buffer pool and JIT compiler                              |
+| `durationSeconds`        | 1800                                                        | Steady-state measurement window                                             |
+| `cooldownSeconds`        | 120                                                         | Allows queues and connection states to drain                                |
+| `repeatCount`            | 5                                                           | Enables median p95 computation across runs                                  |
+| `seed`                   | 42                                                          | Reproducible parameter distribution                                         |
+| `useZipf`                | false                                                       | Uniform distribution (cache-warm scenario)                                  |
+| `metricsIntervalSeconds` | 1                                                           | Per-second timeseries resolution                                            |
+| `sloP95Ms`               | 50                                                          | SLO threshold: 50 ms at p95                                                 |
+| `errorRateThreshold`     | 0.001                                                       | Maximum tolerated error rate: 0.1 %                                         |
+| TLS / SSL                | **not used**                                                | All legs are plaintext; TLS overhead is excluded as a variable              |
 
 The `warmupSeconds: 300` warm-up phase primes PostgreSQL's buffer pool and the JIT compiler. The
 warm-up window is not included in any reported metric. The `repeatCount: 5` repetitions at each
@@ -893,9 +904,9 @@ independent microservice replicas, with no proxy. Each replica holds 19 HikariCP
 
 ```yaml
 database:
-  jdbcUrl: "jdbc:postgresql://<DB_IP>:5432/benchdb"
-  username: "benchuser"
-  password: "${DB_PASSWORD}"
+  jdbcUrl: 'jdbc:postgresql://<DB_IP>:5432/benchdb'
+  username: 'benchuser'
+  password: '${DB_PASSWORD}'
 
 connectionMode: HIKARI_DISCIPLINED
 dbConnectionBudget: 300
@@ -905,7 +916,7 @@ maxPoolSizePerReplica: 19
 workload:
   type: W2_MIXED
   openLoop: true
-  targetRps: 63    # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  targetRps: 63 # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
   warmupSeconds: 300
   durationSeconds: 600
   cooldownSeconds: 120
@@ -915,16 +926,17 @@ workload:
   seed: 42
 
 numAccounts: 1000000
-numItems:    100000
-numOrders:   10000000
+numItems: 100000
+numOrders: 10000000
 
 metricsIntervalSeconds: 1
-outputDir: "results/sut-a-baseline"
+outputDir: 'results/sut-a-baseline'
 sloP95Ms: 50
 errorRateThreshold: 0.001
 ```
 
 **Run command (execute on both machines simultaneously, stagger starts by ≤2 seconds):**
+
 ```bash
 # On LG-1 (JVMs 0–7)
 for i in {0..7}; do
@@ -961,12 +973,12 @@ PROXY-{1,2,3} (OJP:1059) → DB (plaintext)
 ```yaml
 database:
   # Multi-host OJP JDBC URL — driver distributes virtual connections across all 3 OJP nodes
-  jdbcUrl: "jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb"
-  username: "benchuser"
-  password: "${DB_PASSWORD}"
+  jdbcUrl: 'jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb'
+  username: 'benchuser'
+  password: '${DB_PASSWORD}'
 
 connectionMode: OJP
-dbConnectionBudget: 48   # Total real backend DB budget across 3 OJP servers
+dbConnectionBudget: 48 # Total real backend DB budget across 3 OJP servers
 replicas: 16
 
 ojp:
@@ -981,7 +993,7 @@ ojp:
 workload:
   type: W2_MIXED
   openLoop: true
-  targetRps: 63    # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  targetRps: 63 # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
   warmupSeconds: 300
   durationSeconds: 600
   cooldownSeconds: 120
@@ -991,16 +1003,17 @@ workload:
   seed: 42
 
 numAccounts: 1000000
-numItems:    100000
-numOrders:   10000000
+numItems: 100000
+numOrders: 10000000
 
 metricsIntervalSeconds: 1
-outputDir: "results/sut-b-ojp"
+outputDir: 'results/sut-b-ojp'
 sloP95Ms: 50
 errorRateThreshold: 0.001
 ```
 
 **Run command (execute on both machines simultaneously):**
+
 ```bash
 # On LG-1 (JVMs 0–7)
 for i in {0..7}; do
@@ -1034,17 +1047,17 @@ PROXY-{1,2,3} (PgBouncer:6432) → DB (plaintext)
 ```yaml
 database:
   # Point to HAProxy load balancer, not directly to a PgBouncer instance
-  jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"
-  username: "benchuser"
-  password: "${DB_PASSWORD}"
+  jdbcUrl: 'jdbc:postgresql://<LB_IP>:6432/benchdb'
+  username: 'benchuser'
+  password: '${DB_PASSWORD}'
 
 connectionMode: PGBOUNCER
-poolSize: 20   # Main production profile
+poolSize: 20 # Main production profile
 
 workload:
   type: W2_MIXED
   openLoop: true
-  targetRps: 63    # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  targetRps: 63 # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
   warmupSeconds: 300
   durationSeconds: 600
   cooldownSeconds: 120
@@ -1054,16 +1067,17 @@ workload:
   seed: 42
 
 numAccounts: 1000000
-numItems:    100000
-numOrders:   10000000
+numItems: 100000
+numOrders: 10000000
 
 metricsIntervalSeconds: 1
-outputDir: "results/sut-c-pgbouncer"
+outputDir: 'results/sut-c-pgbouncer'
 sloP95Ms: 50
 errorRateThreshold: 0.001
 ```
 
 **Run command (execute on both machines simultaneously):**
+
 ```bash
 # On LG-1 (JVMs 0–7)
 for i in {0..7}; do
@@ -1081,6 +1095,7 @@ wait
 ```
 
 **PgBouncer monitoring during the test (run on each PROXY machine in a separate terminal):**
+
 ```bash
 watch -n 5 "psql -p 6432 -U benchuser pgbouncer -c 'SHOW POOLS;' && \
             psql -p 6432 -U benchuser pgbouncer -c 'SHOW STATS;'"
@@ -1222,12 +1237,12 @@ else:
 
 **Additional metrics:**
 
-| Metric | Definition |
-|--------|------------|
-| Overload peak p99 | Maximum p99 latency during the 300-second overload phase |
-| Overload error rate | Mean error rate during the overload phase |
-| Queue drain time | Time from load reduction until `cl_waiting = 0` in `SHOW POOLS` (PgBouncer only) |
-| Recovery time | As defined above |
+| Metric              | Definition                                                                       |
+| ------------------- | -------------------------------------------------------------------------------- |
+| Overload peak p99   | Maximum p99 latency during the 300-second overload phase                         |
+| Overload error rate | Mean error rate during the overload phase                                        |
+| Queue drain time    | Time from load reduction until `cl_waiting = 0` in `SHOW POOLS` (PgBouncer only) |
+| Recovery time       | As defined above                                                                 |
 
 ---
 
@@ -1285,18 +1300,18 @@ Save to `results/{scenario}/pg_stat_statements.csv`.
 
 The following metrics must be reported for each SUT and each scenario:
 
-| Metric | Source |
-|--------|--------|
+| Metric                         | Source                                                          |
+| ------------------------------ | --------------------------------------------------------------- |
 | Mean achieved throughput (RPS) | `summary.json → achievedThroughputRps` (sum across 16 replicas) |
-| p50 latency (ms) | `summary.json → p50Ms` (median across 16 replicas) |
-| p95 latency (ms) | `summary.json → p95Ms` (median across 16 replicas) |
-| p99 latency (ms) | `summary.json → p99Ms` (median across 16 replicas) |
-| p999 latency (ms) | `summary.json → p999Ms` (median across 16 replicas) |
-| Maximum latency (ms) | `summary.json → maxMs` |
-| Error rate | `summary.json → errorRate` |
-| Error breakdown | `summary.json → errorsByType` |
-| Maximum sustainable throughput | `sweep-summary.json` |
-| Recovery time (Test B only) | Computed from `timeseries.csv` |
+| p50 latency (ms)               | `summary.json → p50Ms` (median across 16 replicas)              |
+| p95 latency (ms)               | `summary.json → p95Ms` (median across 16 replicas)              |
+| p99 latency (ms)               | `summary.json → p99Ms` (median across 16 replicas)              |
+| p999 latency (ms)              | `summary.json → p999Ms` (median across 16 replicas)             |
+| Maximum latency (ms)           | `summary.json → maxMs`                                          |
+| Error rate                     | `summary.json → errorRate`                                      |
+| Error breakdown                | `summary.json → errorsByType`                                   |
+| Maximum sustainable throughput | `sweep-summary.json`                                            |
+| Recovery time (Test B only)    | Computed from `timeseries.csv`                                  |
 
 ---
 
@@ -1307,22 +1322,22 @@ refutation is the scientific contribution of the study.
 
 ### Production Topology Summary Table
 
-| Scenario | Client-side pooling | External LB | Proxy nodes | Configured DB backend budget | Observed max DB backends | Proxy-tier CPU | Proxy-tier RSS | p95 latency | p99 latency | Throughput | Error rate |
-|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| HikariCP direct | Yes, per replica | No | 0 | ~300 | measured | N/A | N/A | measured | measured | measured | measured |
-| OJP | No local pool; logical JDBC connections | No | 3 | 48 | measured | measured | measured | measured | measured | measured | measured |
-| PgBouncer + HAProxy | Yes, HikariCP local pool | Yes | 3 + HAProxy | 48 | measured | measured | measured | measured | measured | measured | measured |
+| Scenario            | Client-side pooling                     | External LB | Proxy nodes | Configured DB backend budget | Observed max DB backends | Proxy-tier CPU | Proxy-tier RSS | p95 latency | p99 latency | Throughput | Error rate |
+| ------------------- | --------------------------------------- | ----------- | ----------: | ---------------------------: | -----------------------: | -------------: | -------------: | ----------: | ----------: | ---------: | ---------: |
+| HikariCP direct     | Yes, per replica                        | No          |           0 |                         ~300 |                 measured |            N/A |            N/A |    measured |    measured |   measured |   measured |
+| OJP                 | No local pool; logical JDBC connections | No          |           3 |                           48 |                 measured |       measured |       measured |    measured |    measured |   measured |   measured |
+| PgBouncer + HAProxy | Yes, HikariCP local pool                | Yes         | 3 + HAProxy |                           48 |                 measured |       measured |       measured |    measured |    measured |   measured |   measured |
 
 ### 12.1 Steady-State Throughput at 1,000 RPS
 
 **Hypothesis H1:** At 1,000 RPS aggregate with 16 clients (SUT-A: 300 direct connections;
 SUT-B/C: 48 backend connections via proxy):
 
-| SUT | Predicted p95 relative to SUT-A | Predicted throughput |
-|-----|----------------------------------|----------------------|
-| SUT-A HikariCP Disciplined (baseline) | baseline | baseline |
-| SUT-B OJP (3 nodes, gRPC, client-side LB) | +2 to +15% higher latency (gRPC hop + proxy) | ≈ baseline |
-| SUT-C PgBouncer (3 nodes + HAProxy) | +2 to +10% higher latency (LB hop + proxy) | ≈ baseline |
+| SUT                                       | Predicted p95 relative to SUT-A              | Predicted throughput |
+| ----------------------------------------- | -------------------------------------------- | -------------------- |
+| SUT-A HikariCP Disciplined (baseline)     | baseline                                     | baseline             |
+| SUT-B OJP (3 nodes, gRPC, client-side LB) | +2 to +15% higher latency (gRPC hop + proxy) | ≈ baseline           |
+| SUT-C PgBouncer (3 nodes + HAProxy)       | +2 to +10% higher latency (LB hop + proxy)   | ≈ baseline           |
 
 The proxy-hop overhead is expected to be 0.1–0.5 ms per request on a 10 GbE LAN.
 Per-query overhead above the baseline is attributable to proxy protocol processing and queueing.
@@ -1346,73 +1361,73 @@ implementation-specific proxy overheads.
 
 **Hypothesis H4:** Under a 300-second, 130% overload episode:
 
-| SUT | Predicted recovery time |
-|-----|------------------------|
-| SUT-A HikariCP Disciplined | 5–30 s (HikariCP connection queue drains quickly after load drops) |
+| SUT                                  | Predicted recovery time                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| SUT-A HikariCP Disciplined           | 5–30 s (HikariCP connection queue drains quickly after load drops)             |
 | SUT-B OJP (3 nodes + client-side LB) | 5–60 s (OJP queue drains across 3 nodes; depends on `queueLimit` per instance) |
-| SUT-C PgBouncer (3 nodes + HAProxy) | 5–60 s (PgBouncer `cl_waiting` queue drains across 3 instances) |
+| SUT-C PgBouncer (3 nodes + HAProxy)  | 5–60 s (PgBouncer `cl_waiting` queue drains across 3 instances)                |
 
 ### 12.4 Expected Resource Consumption
 
 #### Load Generator Machines (LG-1 and LG-2)
 
-| Resource | Expected value |
-|----------|---------------|
-| CPU | 2–4 cores (out of 8) for 8 bench JVM replicas; spikes to 6 cores during warm-up |
-| Heap (JVM) | ≈ 4 GB live data (8 × 500 MB); GC pauses < 10 ms with G1GC |
-| Network TX | 20–80 Mbps |
-| Network RX | 30–100 Mbps |
+| Resource   | Expected value                                                                  |
+| ---------- | ------------------------------------------------------------------------------- |
+| CPU        | 2–4 cores (out of 8) for 8 bench JVM replicas; spikes to 6 cores during warm-up |
+| Heap (JVM) | ≈ 4 GB live data (8 × 500 MB); GC pauses < 10 ms with G1GC                      |
+| Network TX | 20–80 Mbps                                                                      |
+| Network RX | 30–100 Mbps                                                                     |
 
 #### Load Balancer — HAProxy (LB, SUT-C only)
 
-| Resource | Expected value |
-|----------|---------------|
-| CPU | < 0.5 cores (TCP mode, plaintext) |
-| Memory | < 200 MB |
+| Resource        | Expected value                        |
+| --------------- | ------------------------------------- |
+| CPU             | < 0.5 cores (TCP mode, plaintext)     |
+| Memory          | < 200 MB                              |
 | Network TX + RX | ≈ same as aggregate LG-1/LG-2 traffic |
 
 #### Proxy Tier — PgBouncer (SUT-C)
 
 Per instance (× 3 identical machines):
 
-| Resource | Expected value |
-|----------|---------------|
-| CPU | 0.5–1.5 cores (PgBouncer is single-threaded; one core saturates at ~50k TPS) |
-| Memory | 20–80 MB (16 backend + up to 2,000 client connections) |
-| Network | ≈ LG-1/LG-2-to-proxy traffic forwarded to DB; proportional to query payload size |
+| Resource | Expected value                                                                   |
+| -------- | -------------------------------------------------------------------------------- |
+| CPU      | 0.5–1.5 cores (PgBouncer is single-threaded; one core saturates at ~50k TPS)     |
+| Memory   | 20–80 MB (16 backend + up to 2,000 client connections)                           |
+| Network  | ≈ LG-1/LG-2-to-proxy traffic forwarded to DB; proportional to query payload size |
 
 #### Proxy Tier — OJP Server (SUT-B)
 
 Per instance (× 3 identical machines):
 
-| Resource | Expected value |
-|----------|---------------|
-| CPU | 1–3 cores (Netty event loops; scales with in-flight gRPC streams) |
-| Heap committed | 300–512 MB |
-| Off-heap / native (NMT) | 250–490 MB |
-| **Total RSS** | **600 MB–1.1 GB** |
+| Resource                | Expected value                                                    |
+| ----------------------- | ----------------------------------------------------------------- |
+| CPU                     | 1–3 cores (Netty event loops; scales with in-flight gRPC streams) |
+| Heap committed          | 300–512 MB                                                        |
+| Off-heap / native (NMT) | 250–490 MB                                                        |
+| **Total RSS**           | **600 MB–1.1 GB**                                                 |
 
 #### Database Server (DB)
 
-| Resource | Expected value |
-|----------|---------------|
-| CPU | 4–10 cores (out of 16) at 1,000 RPS on cache-warm W2_MIXED workload |
-| Memory | 65–70 GB resident (64 GB `shared_buffers` + OS page cache + working memory) |
-| Storage I/O | Near zero read IOPS; 5–20 MB/s WAL writes |
-| Network | 50–150 Mbps |
+| Resource    | Expected value                                                              |
+| ----------- | --------------------------------------------------------------------------- |
+| CPU         | 4–10 cores (out of 16) at 1,000 RPS on cache-warm W2_MIXED workload         |
+| Memory      | 65–70 GB resident (64 GB `shared_buffers` + OS page cache + working memory) |
+| Storage I/O | Near zero read IOPS; 5–20 MB/s WAL writes                                   |
+| Network     | 50–150 Mbps                                                                 |
 
 If DB CPU exceeds 80% sustained, the workload has hit the compute limit of the DB tier.
 Reduce `targetRps` until DB CPU drops below 70% before comparing proxy SUTs.
 
 #### Summary Table
 
-| Node | CPU (expected) | Memory (expected) | Notes |
-|------|---------------|-------------------|-------|
-| LG-1 / LG-2 | 2–4 cores | ~4 GB JVM heap | Bottleneck if CPU > 75% |
-| LB (HAProxy, SUT-C only) | < 0.5 cores | < 200 MB | Plaintext TCP mode |
-| PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores | 20–80 MB | Single-threaded; saturates at 1 core |
-| PROXY ×3 — OJP (SUT-B) | 1–3 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
-| DB | 4–10 cores | 65–70 GB | Bottleneck if CPU > 80% |
+| Node                         | CPU (expected) | Memory (expected) | Notes                                              |
+| ---------------------------- | -------------- | ----------------- | -------------------------------------------------- |
+| LG-1 / LG-2                  | 2–4 cores      | ~4 GB JVM heap    | Bottleneck if CPU > 75%                            |
+| LB (HAProxy, SUT-C only)     | < 0.5 cores    | < 200 MB          | Plaintext TCP mode                                 |
+| PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores  | 20–80 MB          | Single-threaded; saturates at 1 core               |
+| PROXY ×3 — OJP (SUT-B)       | 1–3 cores      | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
+| DB                           | 4–10 cores     | 65–70 GB          | Bottleneck if CPU > 80%                            |
 
 ---
 
@@ -1507,7 +1522,7 @@ in any publication that uses these results.
 
 ---
 
-*Document version: 2.1 — May 2026*
+_Document version: 2.1 — May 2026_
 
 ---
 

@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from stressum.load import RunBundle
+from stressum.load import RunBundle, read_node_csv
 
 
 @dataclass
@@ -14,10 +14,15 @@ class RunAggregates:
     replica_ids: list[int]
     rows: list[dict[str, Any]]
     total_achieved_rps: float
+    total_successful_rps: float
+    total_error_rps: float
+    total_completed_rps: float
     total_attempted_rps: float
     total_requests: int
     total_failed: int
+    total_successful_requests: int
     aggregate_error_rate: float
+    errors_by_type: dict[str, int]
     median_p50_ms: float | None
     median_p95_ms: float | None
     median_p99_ms: float | None
@@ -35,12 +40,63 @@ def _f(summary: dict[str, Any], *keys: str, default: float | None = None) -> flo
     return default
 
 
+def _successful_rps(summary: dict[str, Any]) -> float:
+    v = summary.get("successfulThroughputRps")
+    if isinstance(v, (int, float)):
+        return float(v)
+    v = summary.get("achievedThroughputRps")
+    if isinstance(v, (int, float)):
+        return float(v)
+    return 0.0
+
+
+def _error_rps(summary: dict[str, Any]) -> float:
+    v = summary.get("errorThroughputRps")
+    if isinstance(v, (int, float)):
+        return float(v)
+    return 0.0
+
+
+def _total_rps(summary: dict[str, Any]) -> float:
+    v = summary.get("totalThroughputRps")
+    if isinstance(v, (int, float)):
+        return float(v)
+    return _successful_rps(summary) + _error_rps(summary)
+
+
+def is_open_loop(run_info: dict[str, Any]) -> bool:
+    if run_info.get("openLoop") is True:
+        return True
+    load_mode = run_info.get("loadMode")
+    if isinstance(load_mode, str):
+        normalized = load_mode.replace("_", "-").lower()
+        if normalized == "open-loop":
+            return True
+    return False
+
+
+def _merge_errors_by_type(
+    target: dict[str, int],
+    summary: dict[str, Any],
+) -> None:
+    raw = summary.get("errorsByType")
+    if not isinstance(raw, dict):
+        return
+    for key, count in raw.items():
+        if isinstance(count, (int, float)):
+            target[str(key)] = target.get(str(key), 0) + int(count)
+
+
 def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
     rows: list[dict[str, Any]] = []
-    total_rps = 0.0
+    total_successful = 0.0
+    total_error = 0.0
+    total_completed = 0.0
     total_attempted = 0.0
     total_req = 0
     total_fail = 0
+    total_success = 0
+    errors_by_type: dict[str, int] = {}
 
     p50s: list[float] = []
     p95s: list[float] = []
@@ -51,15 +107,22 @@ def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
         ri = summary.get("runInfo") or {}
         lat = summary.get("latencyMs") or {}
 
-        ach = float(summary.get("achievedThroughputRps") or 0.0)
+        succ = _successful_rps(summary)
+        err_rps = _error_rps(summary)
+        tot_rps = _total_rps(summary)
         att = float(summary.get("attemptedRps") or 0.0)
         tr = int(summary.get("totalRequests") or 0)
         fr = int(summary.get("failedRequests") or 0)
+        sr = int(summary.get("successfulRequests") or (tr - fr))
 
-        total_rps += ach
+        total_successful += succ
+        total_error += err_rps
+        total_completed += tot_rps
         total_attempted += att
         total_req += tr
         total_fail += fr
+        total_success += sr
+        _merge_errors_by_type(errors_by_type, summary)
 
         p50 = lat.get("p50")
         p95 = lat.get("p95")
@@ -81,10 +144,14 @@ def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
                 "workload": ri.get("workload"),
                 "load_mode": ri.get("loadMode"),
                 "target_rps": ri.get("targetRps"),
-                "achieved_throughput_rps": ach,
+                "achieved_throughput_rps": succ,
+                "successful_throughput_rps": succ,
+                "error_throughput_rps": err_rps,
+                "total_throughput_rps": tot_rps,
                 "attempted_rps": att,
                 "error_rate": float(summary.get("errorRate") or 0.0),
                 "total_requests": tr,
+                "successful_requests": sr,
                 "failed_requests": fr,
                 "p50_ms": p50,
                 "p95_ms": p95,
@@ -92,6 +159,9 @@ def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
                 "p999_ms": p999,
                 "max_ms": lat.get("max"),
                 "mean_ms": lat.get("mean"),
+                "mean_successful_ms": lat.get("meanSuccessful"),
+                "mean_failed_ms": lat.get("meanFailed"),
+                "mean_total_ms": lat.get("meanTotal"),
                 "duration_s": ri.get("durationSeconds"),
                 "pool_size": ri.get("poolSize"),
             }
@@ -108,11 +178,16 @@ def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
     return RunAggregates(
         replica_ids=bundle.replica_ids,
         rows=rows,
-        total_achieved_rps=total_rps,
+        total_achieved_rps=total_successful,
+        total_successful_rps=total_successful,
+        total_error_rps=total_error,
+        total_completed_rps=total_completed,
         total_attempted_rps=total_attempted,
         total_requests=total_req,
         total_failed=total_fail,
+        total_successful_requests=total_success,
         aggregate_error_rate=agg_er,
+        errors_by_type=errors_by_type,
         median_p50_ms=_median(p50s),
         median_p95_ms=_median(p95s),
         median_p99_ms=_median(p99s),
@@ -120,10 +195,84 @@ def aggregate_bundle(bundle: RunBundle) -> RunAggregates:
     )
 
 
+def _proxy_tier_proc_paths(bundle: RunBundle) -> list[Path]:
+    paths: list[Path] = []
+    for rel, path in sorted(bundle.node_metrics_csvs.items()):
+        if "/proxy/" in rel and rel.endswith("_proc_metrics.csv"):
+            paths.append(path)
+    for rel, path in sorted(bundle.node_metrics_csvs.items()):
+        if "/lb/" in rel and rel.endswith("_proc_metrics.csv"):
+            paths.append(path)
+    return paths
+
+
+def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
+    """Time-aligned proxy tier CPU rollup (service_cpu from cpu_pct)."""
+    proc_paths = _proxy_tier_proc_paths(bundle)
+    if not proc_paths:
+        return None
+
+    series_by_node: list[pd.Series] = []
+    legacy_peak_sum = 0.0
+
+    for path in proc_paths:
+        try:
+            df = read_node_csv(path)
+        except Exception:
+            continue
+        if "timestamp" not in df.columns or "cpu_pct" not in df.columns:
+            continue
+        ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        cpu = pd.to_numeric(df["cpu_pct"], errors="coerce")
+        valid = ts.notna() & cpu.notna()
+        if not valid.any():
+            continue
+        node = pd.Series(cpu[valid].values, index=ts[valid])
+        node = node.groupby(level=0).mean()
+        series_by_node.append(node)
+        legacy_peak_sum += float(node.max())
+
+    if not series_by_node:
+        return None
+
+    combined = pd.concat(series_by_node, axis=1).fillna(0.0)
+    tier_sum = combined.sum(axis=1)
+    aligned_peak = float(tier_sum.max())
+
+    host_series: list[pd.Series] = []
+    for path in proc_paths:
+        try:
+            df = read_node_csv(path)
+        except Exception:
+            continue
+        if "timestamp" not in df.columns or "host_cpu_pct" not in df.columns:
+            continue
+        ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        host = pd.to_numeric(df["host_cpu_pct"], errors="coerce")
+        valid = ts.notna() & host.notna()
+        if not valid.any():
+            continue
+        node = pd.Series(host[valid].values, index=ts[valid])
+        node = node.groupby(level=0).mean()
+        host_series.append(node)
+
+    host_aligned_peak: float | None = None
+    if host_series:
+        host_combined = pd.concat(host_series, axis=1).fillna(0.0)
+        host_aligned_peak = float(host_combined.sum(axis=1).max())
+
+    out: dict[str, float] = {
+        "service_cpu_aligned_peak_pct": aligned_peak,
+        "service_cpu_legacy_peak_sum_pct": legacy_peak_sum,
+        "service_cpu_mean_pct": float(tier_sum.mean()),
+    }
+    if host_aligned_peak is not None:
+        out["host_cpu_aligned_peak_pct"] = host_aligned_peak
+    return out
+
+
 def node_metrics_numeric_summary(paths: dict[str, Path]) -> pd.DataFrame:
     """One row per CSV file: path + mean/std for numeric columns."""
-    from stressum.load import read_node_csv
-
     out_rows: list[dict[str, Any]] = []
     for rel, path in paths.items():
         try:
