@@ -128,21 +128,31 @@ def plot_comparison_error_rate(labels: list[str], rates: list[float], out: Path)
     plt.close(fig)
 
 
-def plot_comparison_open_loop(
+def plot_comparison_open_loop_missed_opportunities(
     labels: list[str],
     missed: list[int],
+    out: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    ax.bar(labels, missed, color="teal")
+    ax.set_ylabel("Sum of openLoopMissedOpportunities")
+    ax.set_title("Open loop — missed opportunities")
+    ax.tick_params(axis="x", rotation=25)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def plot_comparison_open_loop_scheduling_delay(
+    labels: list[str],
     delay_ms: list[float],
     out: Path,
 ) -> None:
-    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(10, 3.8))
-    ax0.bar(labels, missed, color="teal")
-    ax0.set_ylabel("Sum of openLoopMissedOpportunities")
-    ax0.set_title("Open loop — missed opportunities")
-    ax0.tick_params(axis="x", rotation=25)
-    ax1.bar(labels, delay_ms, color="slategray")
-    ax1.set_ylabel("Sum of openLoopSchedulingDelayMs")
-    ax1.set_title("Open loop — scheduling delay (ms)")
-    ax1.tick_params(axis="x", rotation=25)
+    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    ax.bar(labels, delay_ms, color="slategray")
+    ax.set_ylabel("Sum of openLoopSchedulingDelayMs")
+    ax.set_title("Open loop — scheduling delay (ms)")
+    ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
     plt.close(fig)
@@ -485,9 +495,12 @@ def write_comparison_plots(
         if open_loop:
             open_any = True
     if open_any:
-        op = out_dir / "comparison_open_loop.png"
-        plot_comparison_open_loop(labels, missed_tot, delay_tot, op)
-        paths["comparison_open_loop.png"] = op
+        missed_op = out_dir / "comparison_open_loop_missed_opportunities.png"
+        plot_comparison_open_loop_missed_opportunities(labels, missed_tot, missed_op)
+        paths["comparison_open_loop_missed_opportunities.png"] = missed_op
+        delay_op = out_dir / "comparison_open_loop_scheduling_delay.png"
+        plot_comparison_open_loop_scheduling_delay(labels, delay_tot, delay_op)
+        paths["comparison_open_loop_scheduling_delay.png"] = delay_op
 
     per_scenario_plots: list[tuple[str, Any]] = [
         ("comparison_pg_numbackends", plot_scenario_pg_backends),

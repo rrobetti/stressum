@@ -1,0 +1,1 @@
+{"scenario": "hikari-prod", "configured_db_connection_budget": 75, "bench_replica_count": 2, "hikari_max_pool_size_per_replica": 9, "proxy_nodes": 0, "external_lb": false}
