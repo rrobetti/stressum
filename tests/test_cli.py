@@ -88,15 +88,26 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert meta["scenarios"][0]["latency_percentiles_source"] == "summary_json_median"
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
-    assert (out / "comparison_total_throughput.png").is_file()
-    assert (out / "comparison_total_completed_rps.png").is_file()
-    assert (out / "comparison_total_successful_requests.png").is_file()
-    assert (out / "comparison_open_loop_missed_opportunities.png").is_file()
-    assert (out / "comparison_open_loop_scheduling_delay.png").is_file()
-    assert (out / "comparison_latency_p50.png").is_file()
-    assert (out / "comparison_latency_p95.png").is_file()
-    assert (out / "comparison_latency_p99.png").is_file()
-    assert (out / "comparison_latency_p999.png").is_file()
+    bar_bases = (
+        "comparison_total_throughput",
+        "comparison_total_completed_rps",
+        "comparison_total_successful_requests",
+        "comparison_open_loop_missed_opportunities",
+        "comparison_open_loop_scheduling_delay",
+        "comparison_latency_p50",
+        "comparison_latency_p95",
+        "comparison_latency_p99",
+        "comparison_latency_p999",
+    )
+    for base in bar_bases:
+        assert (
+            out / base / f"{base}__cmp-a.png"
+        ).is_file(), f"missing per-technology bar chart for cmp-a: {base}"
+        assert (
+            out / base / f"{base}__B.png"
+        ).is_file(), f"missing per-technology bar chart for B: {base}"
+        legacy = out / f"{base}.png"
+        assert not legacy.exists(), f"legacy monolithic bar chart still exists: {base}"
     summary = pd.read_csv(out / "comparison_summary.csv")
     assert "total_successful_rps_sum" in summary.columns
     assert "total_successful_requests" in summary.columns
@@ -205,9 +216,11 @@ def test_compare_proxy_host_cpu_charts(tmp_path: Path, monkeypatch: pytest.Monke
     out = _latest_comparison_out(tmp_path)
     summary = pd.read_csv(out / "comparison_summary.csv")
     assert summary["proxy_host_cpu_aligned_peak_pct"].tolist() == [40.0, 40.0]
-    assert (out / "comparison_proxy_host_cpu_aligned_peak.png").is_file()
+    host_cpu_base = "comparison_proxy_host_cpu_aligned_peak"
     assert (
-        out
-        / "comparison_proxy_host_cpu_aligned_peak"
-        / "comparison_proxy_host_cpu_aligned_peak__proxy-a.png"
+        out / host_cpu_base / f"{host_cpu_base}__proxy-a.png"
     ).is_file()
+    assert (
+        out / host_cpu_base / f"{host_cpu_base}__proxy-b.png"
+    ).is_file()
+    assert not (out / f"{host_cpu_base}.png").exists()

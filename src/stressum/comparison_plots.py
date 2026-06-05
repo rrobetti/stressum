@@ -16,6 +16,57 @@ from stressum.aggregate import (
 from stressum.load import RunBundle, read_node_csv
 
 
+def _slug(text: str, fallback: str = "unknown") -> str:
+    slug = re.sub(r"[^\w\-]+", "_", text.strip(), flags=re.UNICODE)
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug or fallback
+
+
+def _technology_from_label(label: str) -> str:
+    stripped = label.strip()
+    if not stripped:
+        return "unknown"
+    if " " in stripped:
+        return stripped.rsplit(" ", 1)[0]
+    return stripped
+
+
+def _group_scenarios_by_technology(
+    scenarios: list[dict[str, Any]],
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for scenario in scenarios:
+        technology = _technology_from_label(scenario["label"])
+        if technology not in groups:
+            groups[technology] = []
+            order.append(technology)
+        groups[technology].append(scenario)
+    return [(technology, groups[technology]) for technology in order]
+
+
+def _technology_bar_output_path(out_dir: Path, base: str, technology: str) -> Path:
+    return out_dir / base / f"{base}__{_slug(technology)}.png"
+
+
+def _bar_figsize(n_labels: int) -> tuple[float, float]:
+    width = min(max(7.5, n_labels * 0.55), 14.0)
+    return (width, 4.0)
+
+
+def _short_bar_labels(labels: list[str], technology: str) -> list[str]:
+    prefix = f"{technology} "
+    if all(label.startswith(prefix) for label in labels):
+        return [label[len(prefix) :] for label in labels]
+    return labels
+
+
+def _title_with_technology(title: str, technology: str | None) -> str:
+    if technology:
+        return f"{title} — {technology}"
+    return title
+
+
 def plot_comparison_throughput(
     labels: list[str],
     totals: list[float],
@@ -23,11 +74,13 @@ def plot_comparison_throughput(
     *,
     ylabel: str = "Successful throughput (sum of replicas, RPS)",
     title: str = "Successful throughput by scenario",
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, totals, color="steelblue")
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(_title_with_technology(title, technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -39,15 +92,23 @@ def plot_comparison_completed_throughput(
     successful: list[float],
     errors: list[float],
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     x = np.arange(len(labels))
     ax.bar(x, successful, label="Successful RPS", color="steelblue")
     ax.bar(x, errors, bottom=successful, label="Error RPS", color="coral")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25)
     ax.set_ylabel("Completed throughput (sum of replicas, RPS)")
-    ax.set_title("Completed throughput by scenario (successful + error)")
+    ax.set_title(
+        _title_with_technology(
+            "Completed throughput by scenario (successful + error)",
+            technology,
+        )
+    )
     ax.legend(loc="upper right", fontsize=8)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -55,9 +116,7 @@ def plot_comparison_completed_throughput(
 
 
 def _artifact_slug(label: str, bundle: RunBundle) -> str:
-    slug = re.sub(r"[^\w\-]+", "_", label.strip(), flags=re.UNICODE)
-    slug = re.sub(r"_+", "_", slug).strip("_")
-    return slug or bundle.run_dir.name
+    return _slug(label, bundle.run_dir.name)
 
 
 def _per_scenario_filename(base: str, label: str, bundle: RunBundle) -> str:
@@ -76,11 +135,14 @@ def plot_comparison_latency_percentile(
     percentile: str,
     title: str,
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, values_ms, color="steelblue")
     ax.set_ylabel("Latency (ms)")
-    ax.set_title(f"{title} — {percentile}")
+    ax.set_title(_title_with_technology(f"{title} — {percentile}", technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -91,11 +153,14 @@ def plot_comparison_total_successful_requests(
     labels: list[str],
     totals: list[int],
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, totals, color="steelblue")
     ax.set_ylabel("Total successful requests (sum of replicas)")
-    ax.set_title("Total successful by scenario")
+    ax.set_title(_title_with_technology("Total successful by scenario", technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -106,22 +171,37 @@ def plot_comparison_proxy_host_cpu_aligned_peak(
     labels: list[str],
     peaks_pct: list[float],
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, peaks_pct, color="slateblue")
     ax.set_ylabel("host_cpu aligned peak sum (%)")
-    ax.set_title("Proxy tier host CPU — time-aligned peak by scenario")
+    ax.set_title(
+        _title_with_technology(
+            "Proxy tier host CPU — time-aligned peak by scenario",
+            technology,
+        )
+    )
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
     plt.close(fig)
 
 
-def plot_comparison_error_rate(labels: list[str], rates: list[float], out: Path) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+def plot_comparison_error_rate(
+    labels: list[str],
+    rates: list[float],
+    out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
+) -> None:
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, [r * 100.0 for r in rates], color="coral")
     ax.set_ylabel("Aggregate error rate (%)")
-    ax.set_title("Errors by scenario")
+    ax.set_title(_title_with_technology("Errors by scenario", technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -132,11 +212,14 @@ def plot_comparison_open_loop_missed_opportunities(
     labels: list[str],
     missed: list[int],
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, missed, color="teal")
     ax.set_ylabel("Sum of openLoopMissedOpportunities")
-    ax.set_title("Open loop — missed opportunities")
+    ax.set_title(_title_with_technology("Open loop — missed opportunities", technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -147,11 +230,14 @@ def plot_comparison_open_loop_scheduling_delay(
     labels: list[str],
     delay_ms: list[float],
     out: Path,
+    *,
+    technology: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(max(7.5, len(labels) * 0.9), 3.6))
+    fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     ax.bar(labels, delay_ms, color="slategray")
     ax.set_ylabel("Sum of openLoopSchedulingDelayMs")
-    ax.set_title("Open loop — scheduling delay (ms)")
+    ax.set_title(_title_with_technology("Open loop — scheduling delay (ms)", technology))
     ax.tick_params(axis="x", rotation=25)
     fig.tight_layout()
     fig.savefig(out, format="png")
@@ -402,29 +488,46 @@ def plot_comparison_timeseries_rps_p99(
     return True
 
 
+def _latency_percentiles_for_scenario(
+    scenario: dict[str, Any],
+) -> tuple[float, float, float, float]:
+    merged = scenario.get("merged")
+    agg = scenario["agg"]
+    if merged is not None:
+        return merged.p50_ms, merged.p95_ms, merged.p99_ms, merged.p999_ms
+    return (
+        float(agg.median_p50_ms or 0.0),
+        float(agg.median_p95_ms or 0.0),
+        float(agg.median_p99_ms or 0.0),
+        float(agg.median_p999_ms or 0.0),
+    )
+
+
+def _open_loop_totals_for_scenario(scenario: dict[str, Any]) -> tuple[bool, int, float]:
+    missed = 0
+    delay = 0.0
+    open_loop = False
+    for summ in scenario["bundle"].summaries:
+        ri = summ.get("runInfo") or {}
+        if is_open_loop(ri):
+            open_loop = True
+        missed += int(ri.get("openLoopMissedOpportunities") or 0)
+        v = ri.get("openLoopSchedulingDelayMs")
+        if isinstance(v, (int, float)):
+            delay += float(v)
+    return open_loop, missed, delay
+
+
+def _register_plot_path(paths: dict[str, Path], out: Path, out_dir: Path) -> None:
+    paths[out.relative_to(out_dir).as_posix()] = out
+
+
 def write_comparison_plots(
     scenarios: list[dict[str, Any]],
     out_dir: Path,
 ) -> dict[str, Path]:
     """scenarios: dicts with keys label, bundle, agg, merged (MergedLatency|None)."""
     paths: dict[str, Path] = {}
-    labels = [s["label"] for s in scenarios]
-    successful_totals = [s["agg"].total_successful_rps for s in scenarios]
-    error_totals = [s["agg"].total_error_rps for s in scenarios]
-    p50, p95, p99, p999 = [], [], [], []
-    for s in scenarios:
-        m = s.get("merged")
-        agg = s["agg"]
-        if m is not None:
-            p50.append(m.p50_ms)
-            p95.append(m.p95_ms)
-            p99.append(m.p99_ms)
-            p999.append(m.p999_ms)
-        else:
-            p50.append(float(agg.median_p50_ms or 0.0))
-            p95.append(float(agg.median_p95_ms or 0.0))
-            p99.append(float(agg.median_p99_ms or 0.0))
-            p999.append(float(agg.median_p999_ms or 0.0))
 
     hdr_all = all(s.get("merged") is not None for s in scenarios)
     hdr_any = any(s.get("merged") is not None for s in scenarios)
@@ -435,72 +538,137 @@ def write_comparison_plots(
     else:
         lat_title = "Latency percentiles (median of per-replica summary.json)"
 
-    tp = out_dir / "comparison_total_throughput.png"
-    plot_comparison_throughput(labels, successful_totals, tp)
-    paths["comparison_total_throughput.png"] = tp
+    for technology, group in _group_scenarios_by_technology(scenarios):
+        raw_labels = [s["label"] for s in group]
+        labels = _short_bar_labels(raw_labels, technology)
+        successful_totals = [s["agg"].total_successful_rps for s in group]
+        error_totals = [s["agg"].total_error_rps for s in group]
+        p50, p95, p99, p999 = zip(
+            *(_latency_percentiles_for_scenario(s) for s in group),
+            strict=True,
+        )
 
-    cp = out_dir / "comparison_total_completed_rps.png"
-    plot_comparison_completed_throughput(labels, successful_totals, error_totals, cp)
-    paths["comparison_total_completed_rps.png"] = cp
+        tp = _technology_bar_output_path(out_dir, "comparison_total_throughput", technology)
+        tp.parent.mkdir(parents=True, exist_ok=True)
+        plot_comparison_throughput(
+            labels,
+            successful_totals,
+            tp,
+            technology=technology,
+        )
+        _register_plot_path(paths, tp, out_dir)
 
-    for pct, series in (
-        ("p50", p50),
-        ("p95", p95),
-        ("p99", p99),
-        ("p999", p999),
-    ):
-        fname = f"comparison_latency_{pct}.png"
-        lp = out_dir / fname
-        plot_comparison_latency_percentile(labels, series, pct, lat_title, lp)
-        paths[fname] = lp
+        cp = _technology_bar_output_path(out_dir, "comparison_total_completed_rps", technology)
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        plot_comparison_completed_throughput(
+            labels,
+            successful_totals,
+            error_totals,
+            cp,
+            technology=technology,
+        )
+        _register_plot_path(paths, cp, out_dir)
 
-    ep = out_dir / "comparison_error_rate.png"
-    plot_comparison_error_rate(labels, [s["agg"].aggregate_error_rate for s in scenarios], ep)
-    paths["comparison_error_rate.png"] = ep
+        for pct, series in (
+            ("p50", list(p50)),
+            ("p95", list(p95)),
+            ("p99", list(p99)),
+            ("p999", list(p999)),
+        ):
+            lp = _technology_bar_output_path(out_dir, f"comparison_latency_{pct}", technology)
+            lp.parent.mkdir(parents=True, exist_ok=True)
+            plot_comparison_latency_percentile(
+                labels,
+                series,
+                pct,
+                lat_title,
+                lp,
+                technology=technology,
+            )
+            _register_plot_path(paths, lp, out_dir)
 
-    sr = out_dir / "comparison_total_successful_requests.png"
-    plot_comparison_total_successful_requests(
-        labels,
-        [s["agg"].total_successful_requests for s in scenarios],
-        sr,
-    )
-    paths["comparison_total_successful_requests.png"] = sr
+        ep = _technology_bar_output_path(out_dir, "comparison_error_rate", technology)
+        ep.parent.mkdir(parents=True, exist_ok=True)
+        plot_comparison_error_rate(
+            labels,
+            [s["agg"].aggregate_error_rate for s in group],
+            ep,
+            technology=technology,
+        )
+        _register_plot_path(paths, ep, out_dir)
 
-    host_cpu_peaks: list[float] = []
-    for s in scenarios:
-        peak = (s.get("proxy_cpu") or {}).get("host_cpu_aligned_peak_pct")
-        host_cpu_peaks.append(float(peak) if isinstance(peak, (int, float)) else float("nan"))
-    if any(np.isfinite(p) for p in host_cpu_peaks):
-        hp = out_dir / "comparison_proxy_host_cpu_aligned_peak.png"
-        plot_comparison_proxy_host_cpu_aligned_peak(labels, host_cpu_peaks, hp)
-        paths["comparison_proxy_host_cpu_aligned_peak.png"] = hp
+        sr = _technology_bar_output_path(
+            out_dir,
+            "comparison_total_successful_requests",
+            technology,
+        )
+        sr.parent.mkdir(parents=True, exist_ok=True)
+        plot_comparison_total_successful_requests(
+            labels,
+            [s["agg"].total_successful_requests for s in group],
+            sr,
+            technology=technology,
+        )
+        _register_plot_path(paths, sr, out_dir)
 
-    open_any = False
-    missed_tot: list[int] = []
-    delay_tot: list[float] = []
-    for s in scenarios:
-        missed = 0
-        delay = 0.0
-        open_loop = False
-        for summ in s["bundle"].summaries:
-            ri = summ.get("runInfo") or {}
-            if is_open_loop(ri):
-                open_loop = True
-            missed += int(ri.get("openLoopMissedOpportunities") or 0)
-            v = ri.get("openLoopSchedulingDelayMs")
-            if isinstance(v, (int, float)):
-                delay += float(v)
-        missed_tot.append(missed)
-        delay_tot.append(delay)
-        if open_loop:
-            open_any = True
-    if open_any:
-        missed_op = out_dir / "comparison_open_loop_missed_opportunities.png"
-        plot_comparison_open_loop_missed_opportunities(labels, missed_tot, missed_op)
-        paths["comparison_open_loop_missed_opportunities.png"] = missed_op
-        delay_op = out_dir / "comparison_open_loop_scheduling_delay.png"
-        plot_comparison_open_loop_scheduling_delay(labels, delay_tot, delay_op)
-        paths["comparison_open_loop_scheduling_delay.png"] = delay_op
+        host_cpu_peaks: list[float] = []
+        for s in group:
+            peak = (s.get("proxy_cpu") or {}).get("host_cpu_aligned_peak_pct")
+            host_cpu_peaks.append(
+                float(peak) if isinstance(peak, (int, float)) else float("nan")
+            )
+        if any(np.isfinite(p) for p in host_cpu_peaks):
+            hp = _technology_bar_output_path(
+                out_dir,
+                "comparison_proxy_host_cpu_aligned_peak",
+                technology,
+            )
+            hp.parent.mkdir(parents=True, exist_ok=True)
+            plot_comparison_proxy_host_cpu_aligned_peak(
+                labels,
+                host_cpu_peaks,
+                hp,
+                technology=technology,
+            )
+            _register_plot_path(paths, hp, out_dir)
+
+        missed_tot: list[int] = []
+        delay_tot: list[float] = []
+        group_open_any = False
+        for s in group:
+            open_loop, missed, delay = _open_loop_totals_for_scenario(s)
+            missed_tot.append(missed)
+            delay_tot.append(delay)
+            if open_loop:
+                group_open_any = True
+        if group_open_any:
+            missed_op = _technology_bar_output_path(
+                out_dir,
+                "comparison_open_loop_missed_opportunities",
+                technology,
+            )
+            missed_op.parent.mkdir(parents=True, exist_ok=True)
+            plot_comparison_open_loop_missed_opportunities(
+                labels,
+                missed_tot,
+                missed_op,
+                technology=technology,
+            )
+            _register_plot_path(paths, missed_op, out_dir)
+
+            delay_op = _technology_bar_output_path(
+                out_dir,
+                "comparison_open_loop_scheduling_delay",
+                technology,
+            )
+            delay_op.parent.mkdir(parents=True, exist_ok=True)
+            plot_comparison_open_loop_scheduling_delay(
+                labels,
+                delay_tot,
+                delay_op,
+                technology=technology,
+            )
+            _register_plot_path(paths, delay_op, out_dir)
 
     per_scenario_plots: list[tuple[str, Any]] = [
         ("comparison_pg_numbackends", plot_scenario_pg_backends),
