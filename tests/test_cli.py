@@ -136,6 +136,49 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert not (out / "comparison_postgres_process_rss.png").exists()
 
 
+def test_compare_writes_cross_technology_bar_charts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    cfg_dir = tmp_path
+    run_h = cfg_dir / "hikari-a"
+    run_o = cfg_dir / "ojp-a"
+    shutil.copytree(FIXTURE, run_h)
+    shutil.copytree(FIXTURE, run_o)
+    cfg_path = cfg_dir / "stressum-comparison.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "runs": [
+                    {"path": "hikari-a", "label": "Hikari A"},
+                    {"path": "ojp-a", "label": "OJP A"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    code = main([])
+    assert code == 0
+    out = _latest_comparison_out(tmp_path)
+    cross_tech_bases = (
+        "comparison_cross_tech_total_throughput",
+        "comparison_cross_tech_total_completed_rps",
+        "comparison_cross_tech_total_successful_requests",
+        "comparison_cross_tech_open_loop_missed_opportunities",
+        "comparison_cross_tech_open_loop_scheduling_delay",
+        "comparison_cross_tech_latency_p50",
+        "comparison_cross_tech_latency_p95",
+        "comparison_cross_tech_latency_p99",
+        "comparison_cross_tech_latency_p999",
+        "comparison_cross_tech_error_rate",
+        "comparison_cross_tech_throughput_latency_p95",
+        "comparison_cross_tech_throughput_latency_p99",
+    )
+    for base in cross_tech_bases:
+        assert (out / f"{base}.png").is_file(), f"missing cross-tech chart: {base}"
+
+
 def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
     cfg_dir = tmp_path

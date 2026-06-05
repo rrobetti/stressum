@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-05T13:40:09.636762+00:00",
+  "generated_at": "2026-06-05T14:00:50.889930+00:00",
   "stressum_version": "0.1.0",
   "config_path": "/Users/Stanzani/Development/stressar-results/stressum-comparison.json",
-  "output_dir": "/Users/Stanzani/Development/stressar-results/output/comparison-2026-06-05-103948-508792",
+  "output_dir": "/Users/Stanzani/Development/stressar-results/output/comparison-2026-06-05-110027-914053",
   "global_warnings": [
     "runInfo mismatch for 'Hikari F': targetRps 1 vs 4 (baseline Hikari A)",
     "runInfo mismatch for 'Hikari G': targetRps 1 vs 4 (baseline Hikari A)",
@@ -2942,6 +2942,19 @@
     }
   ],
   "artifacts": {
+    "comparison_cross_tech_error_rate.png": "comparison_cross_tech_error_rate.png",
+    "comparison_cross_tech_latency_p50.png": "comparison_cross_tech_latency_p50.png",
+    "comparison_cross_tech_latency_p95.png": "comparison_cross_tech_latency_p95.png",
+    "comparison_cross_tech_latency_p99.png": "comparison_cross_tech_latency_p99.png",
+    "comparison_cross_tech_latency_p999.png": "comparison_cross_tech_latency_p999.png",
+    "comparison_cross_tech_open_loop_missed_opportunities.png": "comparison_cross_tech_open_loop_missed_opportunities.png",
+    "comparison_cross_tech_open_loop_scheduling_delay.png": "comparison_cross_tech_open_loop_scheduling_delay.png",
+    "comparison_cross_tech_proxy_host_cpu_aligned_peak.png": "comparison_cross_tech_proxy_host_cpu_aligned_peak.png",
+    "comparison_cross_tech_throughput_latency_p95.png": "comparison_cross_tech_throughput_latency_p95.png",
+    "comparison_cross_tech_throughput_latency_p99.png": "comparison_cross_tech_throughput_latency_p99.png",
+    "comparison_cross_tech_total_completed_rps.png": "comparison_cross_tech_total_completed_rps.png",
+    "comparison_cross_tech_total_successful_requests.png": "comparison_cross_tech_total_successful_requests.png",
+    "comparison_cross_tech_total_throughput.png": "comparison_cross_tech_total_throughput.png",
     "comparison_error_rate/comparison_error_rate__Hikari.png": "comparison_error_rate/comparison_error_rate__Hikari.png",
     "comparison_error_rate/comparison_error_rate__OJP.png": "comparison_error_rate/comparison_error_rate__OJP.png",
     "comparison_error_rate/comparison_error_rate__pgBouncer.png": "comparison_error_rate/comparison_error_rate__pgBouncer.png",

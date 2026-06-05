@@ -45,6 +45,452 @@ def _group_scenarios_by_technology(
     return [(technology, groups[technology]) for technology in order]
 
 
+def _load_point_from_label(label: str) -> str:
+    technology = _technology_from_label(label)
+    prefix = f"{technology} "
+    if label.startswith(prefix):
+        return label[len(prefix) :]
+    return label
+
+
+def _group_scenarios_by_load_point(
+    scenarios: list[dict[str, Any]],
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for scenario in scenarios:
+        load_point = _load_point_from_label(scenario["label"])
+        if load_point not in groups:
+            groups[load_point] = []
+            order.append(load_point)
+        groups[load_point].append(scenario)
+    return [(load_point, groups[load_point]) for load_point in order]
+
+
+def _cross_technology_plot_context(
+    scenarios: list[dict[str, Any]],
+) -> tuple[list[str], list[str], dict[tuple[str, str], dict[str, Any]]] | None:
+    """
+    Return (technologies, load_points, lookup) for cross-technology charts.
+
+    lookup maps (load_point, technology) -> scenario dict.
+    Returns None when fewer than two technologies share at least one load point.
+    """
+    technologies: list[str] = []
+    load_points: list[str] = []
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for scenario in scenarios:
+        label = scenario["label"]
+        technology = _technology_from_label(label)
+        load_point = _load_point_from_label(label)
+        if technology not in technologies:
+            technologies.append(technology)
+        if load_point not in load_points:
+            load_points.append(load_point)
+        lookup[(load_point, technology)] = scenario
+
+    shared_load_points = [
+        load_point
+        for load_point in load_points
+        if len(
+            {
+                _technology_from_label(s["label"])
+                for s in scenarios
+                if _load_point_from_label(s["label"]) == load_point
+            }
+        )
+        >= 2
+    ]
+    if len(technologies) < 2 or not shared_load_points:
+        return technologies, load_points, None
+
+    filtered_lookup = {
+        key: value
+        for key, value in lookup.items()
+        if key[0] in shared_load_points
+    }
+    return technologies, shared_load_points, filtered_lookup
+
+
+_CROSS_TECH_COLORS = (
+    "steelblue",
+    "darkorange",
+    "mediumseagreen",
+    "coral",
+    "slateblue",
+    "teal",
+)
+
+
+def _technology_colors(technologies: list[str]) -> dict[str, str]:
+    return {
+        technology: _CROSS_TECH_COLORS[i % len(_CROSS_TECH_COLORS)]
+        for i, technology in enumerate(technologies)
+    }
+
+
+def _cross_tech_figsize(n_groups: int, n_technologies: int) -> tuple[float, float]:
+    width = min(max(8.0, n_groups * max(1.1, n_technologies * 0.35)), 16.0)
+    return (width, 4.2)
+
+
+def _cross_tech_output_path(out_dir: Path, base: str) -> Path:
+    return out_dir / f"{base}.png"
+
+
+def plot_cross_technology_grouped_bars(
+    load_points: list[str],
+    technologies: list[str],
+    values_by_load_point: dict[str, dict[str, float]],
+    out: Path,
+    *,
+    ylabel: str,
+    title: str,
+    value_scale: float = 1.0,
+    figsize: tuple[float, float] | None = None,
+) -> None:
+    colors = _technology_colors(technologies)
+    n_groups = len(load_points)
+    n_techs = len(technologies)
+    x = np.arange(n_groups)
+    width = min(0.8 / max(n_techs, 1), 0.28)
+    fig, ax = plt.subplots(figsize=figsize or _cross_tech_figsize(n_groups, n_techs))
+    for index, technology in enumerate(technologies):
+        offsets = x + (index - (n_techs - 1) / 2) * width
+        heights = [
+            values_by_load_point.get(load_point, {}).get(technology, np.nan)
+            for load_point in load_points
+        ]
+        scaled = [height * value_scale if np.isfinite(height) else np.nan for height in heights]
+        ax.bar(
+            offsets,
+            scaled,
+            width,
+            label=technology,
+            color=colors[technology],
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(load_points, rotation=25)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def plot_cross_technology_completed_throughput(
+    load_points: list[str],
+    technologies: list[str],
+    successful_by_load_point: dict[str, dict[str, float]],
+    errors_by_load_point: dict[str, dict[str, float]],
+    out: Path,
+    *,
+    figsize: tuple[float, float] | None = None,
+) -> None:
+    colors = _technology_colors(technologies)
+    n_groups = len(load_points)
+    n_techs = len(technologies)
+    x = np.arange(n_groups)
+    width = min(0.8 / max(n_techs, 1), 0.28)
+    fig, ax = plt.subplots(figsize=figsize or _cross_tech_figsize(n_groups, n_techs))
+    for index, technology in enumerate(technologies):
+        offsets = x + (index - (n_techs - 1) / 2) * width
+        successful = [
+            successful_by_load_point.get(load_point, {}).get(technology, np.nan)
+            for load_point in load_points
+        ]
+        errors = [
+            errors_by_load_point.get(load_point, {}).get(technology, np.nan)
+            for load_point in load_points
+        ]
+        ax.bar(
+            offsets,
+            successful,
+            width,
+            label=f"{technology} successful",
+            color=colors[technology],
+        )
+        ax.bar(
+            offsets,
+            errors,
+            width,
+            bottom=successful,
+            color=colors[technology],
+            alpha=0.45,
+            hatch="//",
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(load_points, rotation=25)
+    ax.set_ylabel("Completed throughput (sum of replicas, RPS)")
+    ax.set_title("Cross-technology completed throughput by load point (successful + error)")
+    handles, labels = ax.get_legend_handles_labels()
+    deduped: dict[str, Any] = {}
+    for handle, label in zip(handles, labels, strict=True):
+        tech = label.removesuffix(" successful")
+        if tech not in deduped:
+            deduped[tech] = handle
+    ax.legend(deduped.values(), deduped.keys(), loc="upper right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def plot_cross_technology_throughput_latency_curve(
+    technologies: list[str],
+    points_by_technology: dict[str, list[tuple[float, float]]],
+    out: Path,
+    *,
+    percentile: str,
+    figsize: tuple[float, float] | None = None,
+) -> None:
+    colors = _technology_colors(technologies)
+    fig, ax = plt.subplots(figsize=figsize or (9.0, 4.2))
+    for technology in technologies:
+        series = sorted(points_by_technology.get(technology, []), key=lambda item: item[0])
+        if not series:
+            continue
+        xs, ys = zip(*series, strict=True)
+        ax.plot(xs, ys, marker="o", linewidth=1.2, label=technology, color=colors[technology])
+    ax.set_xlabel("Target RPS (aggregate)")
+    ax.set_ylabel(f"{percentile} latency (ms)")
+    ax.set_title(f"Cross-technology throughput–latency curve ({percentile})")
+    ax.set_yscale("log")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.grid(True, which="both", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def _target_rps_for_scenario(scenario: dict[str, Any]) -> float | None:
+    summaries = scenario["bundle"].summaries
+    if not summaries:
+        return None
+    run_info = summaries[0].get("runInfo") or {}
+    target = run_info.get("targetRps")
+    if isinstance(target, (int, float)):
+        return float(target)
+    return None
+
+
+def _write_cross_technology_plots(
+    scenarios: list[dict[str, Any]],
+    out_dir: Path,
+    paths: dict[str, Path],
+    *,
+    lat_title: str,
+) -> None:
+    technologies, load_points, lookup = _cross_technology_plot_context(scenarios)
+    if lookup is None:
+        return
+
+    def _values(getter: Any) -> dict[str, dict[str, float]]:
+        values: dict[str, dict[str, float]] = {}
+        for load_point in load_points:
+            values[load_point] = {}
+            for technology in technologies:
+                scenario = lookup.get((load_point, technology))
+                if scenario is None:
+                    continue
+                values[load_point][technology] = float(getter(scenario))
+        return values
+
+    throughput_values = _values(lambda scenario: scenario["agg"].total_successful_rps)
+    out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_throughput")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plot_cross_technology_grouped_bars(
+        load_points,
+        technologies,
+        throughput_values,
+        out,
+        ylabel="Successful throughput (sum of replicas, RPS)",
+        title="Cross-technology successful throughput by load point",
+    )
+    _register_plot_path(paths, out, out_dir)
+
+    successful_values = throughput_values
+    error_values = _values(lambda scenario: scenario["agg"].total_error_rps)
+    out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_completed_rps")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plot_cross_technology_completed_throughput(
+        load_points,
+        technologies,
+        successful_values,
+        error_values,
+        out,
+    )
+    _register_plot_path(paths, out, out_dir)
+
+    for pct, getter in (
+        ("p50", lambda scenario: _latency_percentiles_for_scenario(scenario)[0]),
+        ("p95", lambda scenario: _latency_percentiles_for_scenario(scenario)[1]),
+        ("p99", lambda scenario: _latency_percentiles_for_scenario(scenario)[2]),
+        ("p999", lambda scenario: _latency_percentiles_for_scenario(scenario)[3]),
+    ):
+        out = _cross_tech_output_path(out_dir, f"comparison_cross_tech_latency_{pct}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            _values(getter),
+            out,
+            ylabel="Latency (ms)",
+            title=f"Cross-technology {lat_title} — {pct}",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+    out = _cross_tech_output_path(out_dir, "comparison_cross_tech_error_rate")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plot_cross_technology_grouped_bars(
+        load_points,
+        technologies,
+        _values(lambda scenario: scenario["agg"].aggregate_error_rate),
+        out,
+        ylabel="Aggregate error rate (%)",
+        title="Cross-technology error rate by load point",
+        value_scale=100.0,
+    )
+    _register_plot_path(paths, out, out_dir)
+
+    out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_successful_requests")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plot_cross_technology_grouped_bars(
+        load_points,
+        technologies,
+        _values(lambda scenario: float(scenario["agg"].total_successful_requests)),
+        out,
+        ylabel="Total successful requests (sum of replicas)",
+        title="Cross-technology total successful requests by load point",
+    )
+    _register_plot_path(paths, out, out_dir)
+
+    host_cpu_values: dict[str, dict[str, float]] = {}
+    host_cpu_any = False
+    for load_point in load_points:
+        host_cpu_values[load_point] = {}
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            peak = (scenario.get("proxy_cpu") or {}).get("host_cpu_aligned_peak_pct")
+            if isinstance(peak, (int, float)):
+                host_cpu_values[load_point][technology] = float(peak)
+                host_cpu_any = True
+    if host_cpu_any:
+        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_proxy_host_cpu_aligned_peak")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            host_cpu_values,
+            out,
+            ylabel="host_cpu aligned peak sum (%)",
+            title="Cross-technology proxy tier host CPU peak by load point",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+    open_loop_any = False
+    missed_values: dict[str, dict[str, float]] = {}
+    delay_values: dict[str, dict[str, float]] = {}
+    for load_point in load_points:
+        missed_values[load_point] = {}
+        delay_values[load_point] = {}
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            open_loop, missed, delay = _open_loop_totals_for_scenario(scenario)
+            if open_loop:
+                open_loop_any = True
+            missed_values[load_point][technology] = float(missed)
+            delay_values[load_point][technology] = delay
+    if open_loop_any:
+        out = _cross_tech_output_path(
+            out_dir,
+            "comparison_cross_tech_open_loop_missed_opportunities",
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            missed_values,
+            out,
+            ylabel="Sum of openLoopMissedOpportunities",
+            title="Cross-technology open loop missed opportunities by load point",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+        out = _cross_tech_output_path(
+            out_dir,
+            "comparison_cross_tech_open_loop_scheduling_delay",
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            delay_values,
+            out,
+            ylabel="Sum of openLoopSchedulingDelayMs",
+            title="Cross-technology open loop scheduling delay by load point",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+    curve_points: dict[str, list[tuple[float, float]]] = {
+        technology: [] for technology in technologies
+    }
+    for load_point in load_points:
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            target_rps = _target_rps_for_scenario(scenario)
+            if target_rps is None:
+                continue
+            _, p95, p99, _ = _latency_percentiles_for_scenario(scenario)
+            curve_points[technology].append((target_rps, p95))
+    if any(curve_points[technology] for technology in technologies):
+        out = _cross_tech_output_path(
+            out_dir,
+            "comparison_cross_tech_throughput_latency_p95",
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_throughput_latency_curve(
+            technologies,
+            curve_points,
+            out,
+            percentile="p95",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+    curve_points_p99: dict[str, list[tuple[float, float]]] = {
+        technology: [] for technology in technologies
+    }
+    for load_point in load_points:
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            target_rps = _target_rps_for_scenario(scenario)
+            if target_rps is None:
+                continue
+            _, _, p99, _ = _latency_percentiles_for_scenario(scenario)
+            curve_points_p99[technology].append((target_rps, p99))
+    if any(curve_points_p99[technology] for technology in technologies):
+        out = _cross_tech_output_path(
+            out_dir,
+            "comparison_cross_tech_throughput_latency_p99",
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_throughput_latency_curve(
+            technologies,
+            curve_points_p99,
+            out,
+            percentile="p99",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+
 def _technology_bar_output_path(out_dir: Path, base: str, technology: str) -> Path:
     return out_dir / base / f"{base}__{_slug(technology)}.png"
 
@@ -711,6 +1157,8 @@ def write_comparison_plots(
                 ):
                     rel = out.relative_to(out_dir).as_posix()
                     paths[rel] = out
+
+    _write_cross_technology_plots(scenarios, out_dir, paths, lat_title=lat_title)
 
     ts = out_dir / "comparison_timeseries_rps_p99.png"
     if plot_comparison_timeseries_rps_p99([(s["label"], s["bundle"]) for s in scenarios], ts):
