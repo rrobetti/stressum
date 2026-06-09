@@ -121,12 +121,28 @@ _CROSS_TECH_COLORS = (
     "teal",
 )
 
+_TECHNOLOGY_COLOR_MAP: dict[str, str] = {
+    "OJP": "steelblue",
+    "Hikari": "darkorange",
+    "pgBouncer": "mediumseagreen",
+}
+
 
 def _technology_colors(technologies: list[str]) -> dict[str, str]:
-    return {
-        technology: _CROSS_TECH_COLORS[i % len(_CROSS_TECH_COLORS)]
-        for i, technology in enumerate(technologies)
-    }
+    colors: dict[str, str] = {}
+    fallback_index = 0
+    for technology in technologies:
+        if technology in _TECHNOLOGY_COLOR_MAP:
+            colors[technology] = _TECHNOLOGY_COLOR_MAP[technology]
+        else:
+            colors[technology] = _CROSS_TECH_COLORS[fallback_index % len(_CROSS_TECH_COLORS)]
+            fallback_index += 1
+    return colors
+
+
+def _color_for_label(label: str) -> str:
+    technology = _technology_from_label(label)
+    return _technology_colors([technology])[technology]
 
 
 def _cross_tech_figsize(n_groups: int, n_technologies: int) -> tuple[float, float]:
@@ -513,6 +529,12 @@ def _title_with_technology(title: str, technology: str | None) -> str:
     return title
 
 
+def _technology_bar_color(technology: str | None) -> str:
+    if technology is None:
+        return "steelblue"
+    return _technology_colors([technology])[technology]
+
+
 def plot_comparison_throughput(
     labels: list[str],
     totals: list[float],
@@ -524,7 +546,7 @@ def plot_comparison_throughput(
     figsize: tuple[float, float] | None = None,
 ) -> None:
     fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
-    ax.bar(labels, totals, color="steelblue")
+    ax.bar(labels, totals, color=_technology_bar_color(technology))
     ax.set_ylabel(ylabel)
     ax.set_title(_title_with_technology(title, technology))
     ax.tick_params(axis="x", rotation=25)
@@ -544,7 +566,8 @@ def plot_comparison_completed_throughput(
 ) -> None:
     fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
     x = np.arange(len(labels))
-    ax.bar(x, successful, label="Successful RPS", color="steelblue")
+    bar_color = _technology_bar_color(technology)
+    ax.bar(x, successful, label="Successful RPS", color=bar_color)
     ax.bar(x, errors, bottom=successful, label="Error RPS", color="coral")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25)
@@ -586,7 +609,7 @@ def plot_comparison_latency_percentile(
     figsize: tuple[float, float] | None = None,
 ) -> None:
     fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
-    ax.bar(labels, values_ms, color="steelblue")
+    ax.bar(labels, values_ms, color=_technology_bar_color(technology))
     ax.set_ylabel("Latency (ms)")
     ax.set_title(_title_with_technology(f"{title} — {percentile}", technology))
     ax.tick_params(axis="x", rotation=25)
@@ -604,7 +627,7 @@ def plot_comparison_total_successful_requests(
     figsize: tuple[float, float] | None = None,
 ) -> None:
     fig, ax = plt.subplots(figsize=figsize or _bar_figsize(len(labels)))
-    ax.bar(labels, totals, color="steelblue")
+    ax.bar(labels, totals, color=_technology_bar_color(technology))
     ax.set_ylabel("Total successful requests (sum of replicas)")
     ax.set_title(_title_with_technology("Total successful by scenario", technology))
     ax.tick_params(axis="x", rotation=25)
@@ -918,8 +941,9 @@ def plot_comparison_timeseries_rps_p99(
         return False
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(9, 5.5), sharex=True)
     for label, g in data:
-        ax0.plot(g["t_rel_s"], g["achieved_rps"], label=label, linewidth=0.9)
-        ax1.plot(g["t_rel_s"], g["p99_ms"], label=label, linewidth=0.9)
+        color = _color_for_label(label)
+        ax0.plot(g["t_rel_s"], g["achieved_rps"], label=label, linewidth=0.9, color=color)
+        ax1.plot(g["t_rel_s"], g["p99_ms"], label=label, linewidth=0.9, color=color)
     ax0.set_ylabel("Sum achieved RPS / s")
     ax0.set_title("Timeseries (not HDR): total RPS and median p99 across replicas")
     ax0.legend(loc="upper right", fontsize=8)

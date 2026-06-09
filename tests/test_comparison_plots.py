@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from stressum.comparison_plots import (
+    _color_for_label,
     _cross_technology_plot_context,
     _group_scenarios_by_load_point,
     _group_scenarios_by_technology,
     _load_point_from_label,
     _short_bar_labels,
+    _technology_colors,
     _technology_from_label,
 )
 
@@ -63,6 +65,23 @@ def test_group_scenarios_by_load_point_preserves_first_seen_order() -> None:
     assert [load_point for load_point, _ in grouped] == ["A", "B"]
     assert [s["label"] for s in grouped[0][1]] == ["Hikari A", "OJP A", "pgBouncer A"]
     assert [s["label"] for s in grouped[1][1]] == ["Hikari B"]
+
+
+def test_technology_colors_assigns_fixed_palette() -> None:
+    colors = _technology_colors(["Hikari", "OJP", "pgBouncer"])
+    assert colors["OJP"] == "steelblue"
+    assert colors["Hikari"] == "darkorange"
+    assert colors["pgBouncer"] == "mediumseagreen"
+
+
+def test_technology_colors_ojp_is_blue_regardless_of_order() -> None:
+    colors = _technology_colors(["pgBouncer", "OJP", "Hikari"])
+    assert colors["OJP"] == "steelblue"
+
+
+def test_color_for_label_uses_technology_prefix() -> None:
+    assert _color_for_label("OJP T") == "steelblue"
+    assert _color_for_label("Hikari A") == "darkorange"
 
 
 def test_cross_technology_plot_context_requires_shared_load_points() -> None:
