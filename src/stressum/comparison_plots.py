@@ -252,12 +252,14 @@ def plot_cross_technology_completed_throughput(
     plt.close(fig)
 
 
-def plot_cross_technology_throughput_latency_curve(
+def plot_cross_technology_throughput_metric_curve(
     technologies: list[str],
     points_by_technology: dict[str, list[tuple[float, float]]],
     out: Path,
     *,
-    percentile: str,
+    ylabel: str,
+    title: str,
+    log_y_scale: bool = False,
     figsize: tuple[float, float] | None = None,
 ) -> None:
     colors = _technology_colors(technologies)
@@ -269,14 +271,34 @@ def plot_cross_technology_throughput_latency_curve(
         xs, ys = zip(*series, strict=True)
         ax.plot(xs, ys, marker="o", linewidth=1.2, label=technology, color=colors[technology])
     ax.set_xlabel("Target RPS (aggregate)")
-    ax.set_ylabel(f"{percentile} latency (ms)")
-    ax.set_title(f"Cross-technology throughput–latency curve ({percentile})")
-    ax.set_yscale("log")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    if log_y_scale:
+        ax.set_yscale("log")
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, which="both", alpha=0.25)
     fig.tight_layout()
     fig.savefig(out, format="png")
     plt.close(fig)
+
+
+def plot_cross_technology_throughput_latency_curve(
+    technologies: list[str],
+    points_by_technology: dict[str, list[tuple[float, float]]],
+    out: Path,
+    *,
+    percentile: str,
+    figsize: tuple[float, float] | None = None,
+) -> None:
+    plot_cross_technology_throughput_metric_curve(
+        technologies,
+        points_by_technology,
+        out,
+        ylabel=f"{percentile} latency (ms)",
+        title=f"Cross-technology throughput–latency curve ({percentile})",
+        log_y_scale=True,
+        figsize=figsize,
+    )
 
 
 def _target_rps_for_scenario(scenario: dict[str, Any]) -> float | None:
@@ -288,6 +310,70 @@ def _target_rps_for_scenario(scenario: dict[str, Any]) -> float | None:
     if isinstance(target, (int, float)):
         return float(target)
     return None
+
+
+def _postgres_process_metric(
+    scenario: dict[str, Any],
+    key: str,
+) -> float | None:
+    value = (scenario.get("postgres_process") or {}).get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _throughput_metric_curve_points(
+    load_points: list[str],
+    technologies: list[str],
+    lookup: dict[tuple[str, str], dict[str, Any]],
+    metric_getter: Any,
+) -> dict[str, list[tuple[float, float]]]:
+    curve_points: dict[str, list[tuple[float, float]]] = {
+        technology: [] for technology in technologies
+    }
+    for load_point in load_points:
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            target_rps = _target_rps_for_scenario(scenario)
+            metric = metric_getter(scenario)
+            if target_rps is None or metric is None:
+                continue
+            curve_points[technology].append((target_rps, metric))
+    return curve_points
+
+
+def _write_cross_technology_throughput_metric_curve(
+    load_points: list[str],
+    technologies: list[str],
+    lookup: dict[tuple[str, str], dict[str, Any]],
+    out_dir: Path,
+    paths: dict[str, Path],
+    *,
+    base: str,
+    metric_getter: Any,
+    ylabel: str,
+    title: str,
+) -> None:
+    curve_points = _throughput_metric_curve_points(
+        load_points,
+        technologies,
+        lookup,
+        metric_getter,
+    )
+    if not any(curve_points[technology] for technology in technologies):
+        return
+    out = _cross_tech_output_path(out_dir, base)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plot_cross_technology_throughput_metric_curve(
+        technologies,
+        curve_points,
+        out,
+        ylabel=ylabel,
+        title=title,
+    )
+    _register_plot_path(paths, out, out_dir)
 
 
 def _write_cross_technology_plots(
@@ -406,6 +492,72 @@ def _write_cross_technology_plots(
         )
         _register_plot_path(paths, out, out_dir)
 
+    postgres_cpu_values: dict[str, dict[str, float]] = {}
+    postgres_rss_values: dict[str, dict[str, float]] = {}
+    postgres_any = False
+    for load_point in load_points:
+        postgres_cpu_values[load_point] = {}
+        postgres_rss_values[load_point] = {}
+        for technology in technologies:
+            scenario = lookup.get((load_point, technology))
+            if scenario is None:
+                continue
+            cpu_peak = _postgres_process_metric(scenario, "cpu_pct_peak")
+            rss_peak = _postgres_process_metric(scenario, "rss_mb_peak")
+            if cpu_peak is not None:
+                postgres_cpu_values[load_point][technology] = cpu_peak
+                postgres_any = True
+            if rss_peak is not None:
+                postgres_rss_values[load_point][technology] = rss_peak
+                postgres_any = True
+    if postgres_any:
+        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_postgres_process_cpu_peak")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            postgres_cpu_values,
+            out,
+            ylabel="PostgreSQL process CPU peak (%)",
+            title="Cross-technology PostgreSQL process CPU peak by load point",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_postgres_process_rss_peak")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            postgres_rss_values,
+            out,
+            ylabel="PostgreSQL process RSS peak (MB)",
+            title="Cross-technology PostgreSQL process RSS peak by load point",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+        _write_cross_technology_throughput_metric_curve(
+            load_points,
+            technologies,
+            lookup,
+            out_dir,
+            paths,
+            base="comparison_cross_tech_throughput_postgres_cpu",
+            metric_getter=lambda scenario: _postgres_process_metric(scenario, "cpu_pct_peak"),
+            ylabel="PostgreSQL process CPU peak (%)",
+            title="Cross-technology throughput–PostgreSQL CPU curve",
+        )
+        _write_cross_technology_throughput_metric_curve(
+            load_points,
+            technologies,
+            lookup,
+            out_dir,
+            paths,
+            base="comparison_cross_tech_throughput_postgres_rss",
+            metric_getter=lambda scenario: _postgres_process_metric(scenario, "rss_mb_peak"),
+            ylabel="PostgreSQL process RSS peak (MB)",
+            title="Cross-technology throughput–PostgreSQL RSS curve",
+        )
+
     open_loop_any = False
     missed_values: dict[str, dict[str, float]] = {}
     delay_values: dict[str, dict[str, float]] = {}
@@ -452,19 +604,12 @@ def _write_cross_technology_plots(
         )
         _register_plot_path(paths, out, out_dir)
 
-    curve_points: dict[str, list[tuple[float, float]]] = {
-        technology: [] for technology in technologies
-    }
-    for load_point in load_points:
-        for technology in technologies:
-            scenario = lookup.get((load_point, technology))
-            if scenario is None:
-                continue
-            target_rps = _target_rps_for_scenario(scenario)
-            if target_rps is None:
-                continue
-            _, p95, p99, _ = _latency_percentiles_for_scenario(scenario)
-            curve_points[technology].append((target_rps, p95))
+    curve_points = _throughput_metric_curve_points(
+        load_points,
+        technologies,
+        lookup,
+        lambda scenario: _latency_percentiles_for_scenario(scenario)[1],
+    )
     if any(curve_points[technology] for technology in technologies):
         out = _cross_tech_output_path(
             out_dir,
@@ -479,19 +624,12 @@ def _write_cross_technology_plots(
         )
         _register_plot_path(paths, out, out_dir)
 
-    curve_points_p99: dict[str, list[tuple[float, float]]] = {
-        technology: [] for technology in technologies
-    }
-    for load_point in load_points:
-        for technology in technologies:
-            scenario = lookup.get((load_point, technology))
-            if scenario is None:
-                continue
-            target_rps = _target_rps_for_scenario(scenario)
-            if target_rps is None:
-                continue
-            _, _, p99, _ = _latency_percentiles_for_scenario(scenario)
-            curve_points_p99[technology].append((target_rps, p99))
+    curve_points_p99 = _throughput_metric_curve_points(
+        load_points,
+        technologies,
+        lookup,
+        lambda scenario: _latency_percentiles_for_scenario(scenario)[2],
+    )
     if any(curve_points_p99[technology] for technology in technologies):
         out = _cross_tech_output_path(
             out_dir,

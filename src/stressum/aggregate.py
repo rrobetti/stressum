@@ -307,6 +307,40 @@ def proxy_tier_host_cpu_timeseries(
     return t0, tier_sum, aligned_peak
 
 
+def _db_proc_metrics_path(bundle: RunBundle) -> Path | None:
+    for key, path in sorted(bundle.node_metrics_csvs.items()):
+        if key.endswith("db/db_proc_metrics.csv"):
+            return path
+    return None
+
+
+def postgres_process_summary(bundle: RunBundle) -> dict[str, float] | None:
+    """Peak and mean CPU/RSS for the PostgreSQL server process (db_proc_metrics.csv)."""
+    path = _db_proc_metrics_path(bundle)
+    if path is None:
+        return None
+    try:
+        df = read_node_csv(path)
+    except Exception:
+        return None
+    if df.empty or "timestamp" not in df.columns:
+        return None
+
+    out: dict[str, float] = {}
+    for col, peak_key, mean_key in (
+        ("cpu_pct", "cpu_pct_peak", "cpu_pct_mean"),
+        ("rss_mb", "rss_mb_peak", "rss_mb_mean"),
+    ):
+        if col not in df.columns:
+            continue
+        ser = pd.to_numeric(df[col], errors="coerce").dropna()
+        if ser.empty:
+            continue
+        out[peak_key] = float(ser.max())
+        out[mean_key] = float(ser.mean())
+    return out or None
+
+
 def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
     """Time-aligned proxy tier CPU rollup (service_cpu from cpu_pct)."""
     rollups = _proxy_tier_service_cpu_rollups(bundle)

@@ -5,6 +5,7 @@ from pathlib import Path
 from stressum.aggregate import (
     aggregate_bundle,
     is_open_loop,
+    postgres_process_summary,
     proxy_tier_cpu_summary,
     proxy_tier_cpu_timeseries,
     proxy_tier_host_cpu_timeseries,
@@ -97,6 +98,25 @@ def test_proxy_tier_host_cpu_timeseries(tmp_path: Path) -> None:
     assert aligned_peak == 70.0
     assert float(t0.iloc[-1]) == 1.0
     assert float(tier_sum.iloc[-1]) == 70.0
+
+
+def test_postgres_process_summary_from_fixture() -> None:
+    bundle = load_run_bundle(FIXTURE)
+    summary = postgres_process_summary(bundle)
+    assert summary is not None
+    assert summary["cpu_pct_peak"] == 3.25
+    assert abs(summary["cpu_pct_mean"] - 2.25) < 1e-9
+    assert summary["rss_mb_peak"] == 131.0
+    assert abs(summary["rss_mb_mean"] - 129.83333333333334) < 1e-9
+
+
+def test_postgres_process_summary_returns_none_without_csv(tmp_path: Path) -> None:
+    run_dir = tmp_path / "no-db-proc"
+    run_dir.mkdir()
+    bundle = load_run_bundle(FIXTURE)
+    bundle.run_dir = run_dir
+    bundle.node_metrics_csvs = {}
+    assert postgres_process_summary(bundle) is None
 
 
 def test_proxy_tier_cpu_timeseries(tmp_path: Path) -> None:

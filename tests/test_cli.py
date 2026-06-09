@@ -112,6 +112,8 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "total_successful_rps_sum" in summary.columns
     assert "total_successful_requests" in summary.columns
     assert "proxy_host_cpu_aligned_peak_pct" in summary.columns
+    assert "postgres_cpu_pct_peak" in summary.columns
+    assert "postgres_rss_mb_peak" in summary.columns
     assert "total_error_rps_sum" in summary.columns
     assert "total_completed_rps_sum" in summary.columns
     assert "open_loop" in summary.columns
@@ -174,9 +176,17 @@ def test_compare_writes_cross_technology_bar_charts(
         "comparison_cross_tech_error_rate",
         "comparison_cross_tech_throughput_latency_p95",
         "comparison_cross_tech_throughput_latency_p99",
+        "comparison_cross_tech_postgres_process_cpu_peak",
+        "comparison_cross_tech_postgres_process_rss_peak",
+        "comparison_cross_tech_throughput_postgres_cpu",
+        "comparison_cross_tech_throughput_postgres_rss",
     )
     for base in cross_tech_bases:
         assert (out / f"{base}.png").is_file(), f"missing cross-tech chart: {base}"
+    meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
+    for scenario in meta["scenarios"]:
+        assert "postgres_cpu_pct_peak" in scenario
+        assert "postgres_rss_mb_peak" in scenario
 
 
 def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

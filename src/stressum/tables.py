@@ -39,6 +39,7 @@ def run_summary_dict(
     agg: RunAggregates,
     *,
     proxy_cpu: dict[str, float] | None = None,
+    postgres_process: dict[str, float] | None = None,
     open_loop: bool = False,
 ) -> dict[str, Any]:
     meta = bundle.metadata or {}
@@ -78,6 +79,16 @@ def run_summary_dict(
         row["proxy_service_cpu_aligned_peak_pct"] = ""
         row["proxy_service_cpu_legacy_peak_sum_pct"] = ""
         row["proxy_host_cpu_aligned_peak_pct"] = ""
+    if postgres_process is not None:
+        row["postgres_cpu_pct_peak"] = postgres_process.get("cpu_pct_peak", "")
+        row["postgres_cpu_pct_mean"] = postgres_process.get("cpu_pct_mean", "")
+        row["postgres_rss_mb_peak"] = postgres_process.get("rss_mb_peak", "")
+        row["postgres_rss_mb_mean"] = postgres_process.get("rss_mb_mean", "")
+    else:
+        row["postgres_cpu_pct_peak"] = ""
+        row["postgres_cpu_pct_mean"] = ""
+        row["postgres_rss_mb_peak"] = ""
+        row["postgres_rss_mb_mean"] = ""
     return row
 
 

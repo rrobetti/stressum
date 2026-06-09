@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-09T20:09:37.331494+00:00",
+  "generated_at": "2026-06-09T20:19:58.267310+00:00",
   "stressum_version": "0.1.0",
   "config_path": "/Users/Stanzani/Development/stressar-results/stressum-comparison.json",
-  "output_dir": "/Users/Stanzani/Development/stressar-results/output/comparison-2026-06-09-170913-729557",
+  "output_dir": "/Users/Stanzani/Development/stressar-results/output/comparison-2026-06-09-171934-489030",
   "global_warnings": [
     "runInfo mismatch for 'Hikari F': targetRps 1 vs 4 (baseline Hikari A)",
     "runInfo mismatch for 'Hikari G': targetRps 1 vs 4 (baseline Hikari A)",
@@ -88,7 +88,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.218997,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 205.98,
+        "cpu_pct_mean": 35.341813842482104,
+        "rss_mb_peak": 23481.71,
+        "rss_mb_mean": 7154.542649164678
+      },
+      "postgres_cpu_pct_peak": 205.98,
+      "postgres_rss_mb_peak": 23481.71
     },
     {
       "label": "Hikari B",
@@ -127,7 +135,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.257445,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 205.27,
+        "cpu_pct_mean": 35.088066825775655,
+        "rss_mb_peak": 19201.79,
+        "rss_mb_mean": 6700.880596658711
+      },
+      "postgres_cpu_pct_peak": 205.27,
+      "postgres_rss_mb_peak": 19201.79
     },
     {
       "label": "Hikari C",
@@ -166,7 +182,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.19387,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 204.21,
+        "cpu_pct_mean": 33.903937947494036,
+        "rss_mb_peak": 18098.93,
+        "rss_mb_mean": 6583.615584725536
+      },
+      "postgres_cpu_pct_peak": 204.21,
+      "postgres_rss_mb_peak": 18098.93
     },
     {
       "label": "Hikari D",
@@ -205,7 +229,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.26898500000000003,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 211.76,
+        "cpu_pct_mean": 34.84397129186603,
+        "rss_mb_peak": 18137.93,
+        "rss_mb_mean": 6671.114521531101
+      },
+      "postgres_cpu_pct_peak": 211.76,
+      "postgres_rss_mb_peak": 18137.93
     },
     {
       "label": "Hikari E",
@@ -244,7 +276,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.2673,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 206.01,
+        "cpu_pct_mean": 34.54645390070922,
+        "rss_mb_peak": 18880.29,
+        "rss_mb_mean": 6768.634704491727
+      },
+      "postgres_cpu_pct_peak": 206.01,
+      "postgres_rss_mb_peak": 18880.29
     },
     {
       "label": "Hikari F",
@@ -285,7 +325,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.165237,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 223.67,
+        "cpu_pct_mean": 160.84414201183432,
+        "rss_mb_peak": 124033.08,
+        "rss_mb_mean": 58249.231005917165
+      },
+      "postgres_cpu_pct_peak": 223.67,
+      "postgres_rss_mb_peak": 124033.08
     },
     {
       "label": "Hikari G",
@@ -326,7 +374,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.248624,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 224.26,
+        "cpu_pct_mean": 151.0455,
+        "rss_mb_peak": 103518.2,
+        "rss_mb_mean": 46866.60038888889
+      },
+      "postgres_cpu_pct_peak": 224.26,
+      "postgres_rss_mb_peak": 103518.2
     },
     {
       "label": "Hikari H",
@@ -367,7 +423,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.16718,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 210.64,
+        "cpu_pct_mean": 154.05158192090397,
+        "rss_mb_peak": 120482.13,
+        "rss_mb_mean": 55166.19740112995
+      },
+      "postgres_cpu_pct_peak": 210.64,
+      "postgres_rss_mb_peak": 120482.13
     },
     {
       "label": "Hikari I",
@@ -409,7 +473,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.24709000000000003,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 220.23,
+        "cpu_pct_mean": 152.18085227272726,
+        "rss_mb_peak": 111642.79,
+        "rss_mb_mean": 50006.127499999995
+      },
+      "postgres_cpu_pct_peak": 220.23,
+      "postgres_rss_mb_peak": 111642.79
     },
     {
       "label": "Hikari J",
@@ -451,7 +523,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.155264,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 221.67,
+        "cpu_pct_mean": 156.39839080459768,
+        "rss_mb_peak": 115541.09,
+        "rss_mb_mean": 50281.698218390804
+      },
+      "postgres_cpu_pct_peak": 221.67,
+      "postgres_rss_mb_peak": 115541.09
     },
     {
       "label": "Hikari K",
@@ -492,7 +572,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.22561900000000001,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 213.72,
+        "cpu_pct_mean": 179.5334306569343,
+        "rss_mb_peak": 116256.06,
+        "rss_mb_mean": 75877.14182481752
+      },
+      "postgres_cpu_pct_peak": 213.72,
+      "postgres_rss_mb_peak": 116256.06
     },
     {
       "label": "Hikari L",
@@ -533,7 +621,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.223356,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 208.26,
+        "cpu_pct_mean": 178.93441176470589,
+        "rss_mb_peak": 118324.9,
+        "rss_mb_mean": 78115.46632352941
+      },
+      "postgres_cpu_pct_peak": 208.26,
+      "postgres_rss_mb_peak": 118324.9
     },
     {
       "label": "Hikari M",
@@ -574,7 +670,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.24756299999999998,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 211.34,
+        "cpu_pct_mean": 180.76192592592594,
+        "rss_mb_peak": 117208.87,
+        "rss_mb_mean": 76436.40029629628
+      },
+      "postgres_cpu_pct_peak": 211.34,
+      "postgres_rss_mb_peak": 117208.87
     },
     {
       "label": "Hikari N",
@@ -615,7 +719,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.27277799999999996,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 213.99,
+        "cpu_pct_mean": 178.29956204379562,
+        "rss_mb_peak": 117487.19,
+        "rss_mb_mean": 78100.6789051095
+      },
+      "postgres_cpu_pct_peak": 213.99,
+      "postgres_rss_mb_peak": 117487.19
     },
     {
       "label": "Hikari O",
@@ -656,7 +768,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.218157,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 209.55,
+        "cpu_pct_mean": 179.22386861313868,
+        "rss_mb_peak": 115188.76,
+        "rss_mb_mean": 75670.72569343066
+      },
+      "postgres_cpu_pct_peak": 209.55,
+      "postgres_rss_mb_peak": 115188.76
     },
     {
       "label": "Hikari P",
@@ -697,7 +817,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.174722,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 209.38,
+        "cpu_pct_mean": 175.97458646616542,
+        "rss_mb_peak": 121201.21,
+        "rss_mb_mean": 81011.3039849624
+      },
+      "postgres_cpu_pct_peak": 209.38,
+      "postgres_rss_mb_peak": 121201.21
     },
     {
       "label": "Hikari Q",
@@ -738,7 +866,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.18918400000000002,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 215.07,
+        "cpu_pct_mean": 180.84744360902255,
+        "rss_mb_peak": 133084.13,
+        "rss_mb_mean": 87210.40669172932
+      },
+      "postgres_cpu_pct_peak": 215.07,
+      "postgres_rss_mb_peak": 133084.13
     },
     {
       "label": "Hikari R",
@@ -779,7 +915,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.181954,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 212.13,
+        "cpu_pct_mean": 180.37866666666665,
+        "rss_mb_peak": 119031.77,
+        "rss_mb_mean": 81023.07555555555
+      },
+      "postgres_cpu_pct_peak": 212.13,
+      "postgres_rss_mb_peak": 119031.77
     },
     {
       "label": "Hikari S",
@@ -820,7 +964,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.255955,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 206.68,
+        "cpu_pct_mean": 178.32833333333335,
+        "rss_mb_peak": 131074.01,
+        "rss_mb_mean": 89878.2103030303
+      },
+      "postgres_cpu_pct_peak": 206.68,
+      "postgres_rss_mb_peak": 131074.01
     },
     {
       "label": "Hikari T",
@@ -861,7 +1013,15 @@
       "open_loop": true,
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.238787,
-      "warnings": []
+      "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 206.02,
+        "cpu_pct_mean": 179.2385496183206,
+        "rss_mb_peak": 136035.95,
+        "rss_mb_mean": 90868.27961832062
+      },
+      "postgres_cpu_pct_peak": 206.02,
+      "postgres_rss_mb_peak": 136035.95
     },
     {
       "label": "OJP A",
@@ -901,6 +1061,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.270667,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 237.95,
+        "cpu_pct_mean": 43.586743515850145,
+        "rss_mb_peak": 21489.65,
+        "rss_mb_mean": 5687.970187319884
+      },
+      "postgres_cpu_pct_peak": 237.95,
+      "postgres_rss_mb_peak": 21489.65,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 182.07,
         "service_cpu_legacy_peak_sum_pct": 456.66999999999996,
@@ -951,6 +1119,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.26548700000000003,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 233.73,
+        "cpu_pct_mean": 44.17415451895043,
+        "rss_mb_peak": 17825.36,
+        "rss_mb_mean": 5565.947857142856
+      },
+      "postgres_cpu_pct_peak": 233.73,
+      "postgres_rss_mb_peak": 17825.36,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 311.62,
         "service_cpu_legacy_peak_sum_pct": 453.81,
@@ -999,6 +1175,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.311778,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 238.5,
+        "cpu_pct_mean": 43.927553648068674,
+        "rss_mb_peak": 19647.08,
+        "rss_mb_mean": 5533.416294706723
+      },
+      "postgres_cpu_pct_peak": 238.5,
+      "postgres_rss_mb_peak": 19647.08,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 322.27,
         "service_cpu_legacy_peak_sum_pct": 468.35,
@@ -1050,6 +1234,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.283457,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 222.61,
+        "cpu_pct_mean": 44.5656772334294,
+        "rss_mb_peak": 19780.27,
+        "rss_mb_mean": 5567.629783861672
+      },
+      "postgres_cpu_pct_peak": 222.61,
+      "postgres_rss_mb_peak": 19780.27,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 298.44000000000005,
         "service_cpu_legacy_peak_sum_pct": 394.85,
@@ -1100,6 +1292,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.291046,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 236.23,
+        "cpu_pct_mean": 43.04677279305354,
+        "rss_mb_peak": 17454.14,
+        "rss_mb_mean": 5486.12487698987
+      },
+      "postgres_cpu_pct_peak": 236.23,
+      "postgres_rss_mb_peak": 17454.14,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 317.42,
         "service_cpu_legacy_peak_sum_pct": 436.39,
@@ -1152,6 +1352,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.311477,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 253.86,
+        "cpu_pct_mean": 134.9168623481781,
+        "rss_mb_peak": 26128.39,
+        "rss_mb_mean": 11102.29809716599
+      },
+      "postgres_cpu_pct_peak": 253.86,
+      "postgres_rss_mb_peak": 26128.39,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 197.71,
         "service_cpu_legacy_peak_sum_pct": 465.19,
@@ -1204,6 +1412,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.29507099999999997,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 253.27,
+        "cpu_pct_mean": 135.34068410462774,
+        "rss_mb_peak": 26047.75,
+        "rss_mb_mean": 11461.057766599595
+      },
+      "postgres_cpu_pct_peak": 253.27,
+      "postgres_rss_mb_peak": 26047.75,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 309.69,
         "service_cpu_legacy_peak_sum_pct": 459.82,
@@ -1256,6 +1472,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.255213,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 234.35,
+        "cpu_pct_mean": 139.62618951612902,
+        "rss_mb_peak": 26883.81,
+        "rss_mb_mean": 12964.011129032258
+      },
+      "postgres_cpu_pct_peak": 234.35,
+      "postgres_rss_mb_peak": 26883.81,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 287.44,
         "service_cpu_legacy_peak_sum_pct": 393.99,
@@ -1308,6 +1532,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.259428,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 261.85,
+        "cpu_pct_mean": 141.87947154471547,
+        "rss_mb_peak": 22549.34,
+        "rss_mb_mean": 10856.686605691057
+      },
+      "postgres_cpu_pct_peak": 261.85,
+      "postgres_rss_mb_peak": 22549.34,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 314.96000000000004,
         "service_cpu_legacy_peak_sum_pct": 459.65000000000003,
@@ -1360,6 +1592,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.382796,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 256.24,
+        "cpu_pct_mean": 140.19014314928427,
+        "rss_mb_peak": 21443.45,
+        "rss_mb_mean": 10578.468936605315
+      },
+      "postgres_cpu_pct_peak": 256.24,
+      "postgres_rss_mb_peak": 21443.45,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 175.21,
         "service_cpu_legacy_peak_sum_pct": 378.53,
@@ -1412,6 +1652,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.253778,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 265.8,
+        "cpu_pct_mean": 147.56529914529915,
+        "rss_mb_peak": 25525.12,
+        "rss_mb_mean": 13110.187478632479
+      },
+      "postgres_cpu_pct_peak": 265.8,
+      "postgres_rss_mb_peak": 25525.12,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 279.40999999999997,
         "service_cpu_legacy_peak_sum_pct": 404.84,
@@ -1464,6 +1712,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.32027799999999995,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 242.04,
+        "cpu_pct_mean": 145.3939832285115,
+        "rss_mb_peak": 24948.85,
+        "rss_mb_mean": 13102.82853249476
+      },
+      "postgres_cpu_pct_peak": 242.04,
+      "postgres_rss_mb_peak": 24948.85,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 321.39,
         "service_cpu_legacy_peak_sum_pct": 482.94999999999993,
@@ -1516,6 +1772,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.288945,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 270.55,
+        "cpu_pct_mean": 146.64935010482182,
+        "rss_mb_peak": 26376.77,
+        "rss_mb_mean": 14623.929979035638
+      },
+      "postgres_cpu_pct_peak": 270.55,
+      "postgres_rss_mb_peak": 26376.77,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 304.6,
         "service_cpu_legacy_peak_sum_pct": 478.48,
@@ -1568,6 +1832,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.338446,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 304.35,
+        "cpu_pct_mean": 146.7948949579832,
+        "rss_mb_peak": 22468.6,
+        "rss_mb_mean": 12157.25787815126
+      },
+      "postgres_cpu_pct_peak": 304.35,
+      "postgres_rss_mb_peak": 22468.6,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 321.29999999999995,
         "service_cpu_legacy_peak_sum_pct": 457.26,
@@ -1620,6 +1892,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.35074700000000003,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 256.88,
+        "cpu_pct_mean": 145.75427659574467,
+        "rss_mb_peak": 23639.44,
+        "rss_mb_mean": 12397.24263829787
+      },
+      "postgres_cpu_pct_peak": 256.88,
+      "postgres_rss_mb_peak": 23639.44,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 303.07,
         "service_cpu_legacy_peak_sum_pct": 449.96,
@@ -1672,6 +1952,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.242024,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 272.79,
+        "cpu_pct_mean": 146.7275105485232,
+        "rss_mb_peak": 22691.17,
+        "rss_mb_mean": 12745.610654008437
+      },
+      "postgres_cpu_pct_peak": 272.79,
+      "postgres_rss_mb_peak": 22691.17,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 239.20999999999998,
         "service_cpu_legacy_peak_sum_pct": 475.75,
@@ -1724,6 +2012,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.310265,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 240.19,
+        "cpu_pct_mean": 110.76583333333332,
+        "rss_mb_peak": 27654.15,
+        "rss_mb_mean": 17996.99755434783
+      },
+      "postgres_cpu_pct_peak": 240.19,
+      "postgres_rss_mb_peak": 27654.15,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 321.65999999999997,
         "service_cpu_legacy_peak_sum_pct": 464.40999999999997,
@@ -1776,6 +2072,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.350375,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 260.85,
+        "cpu_pct_mean": 149.53025751072963,
+        "rss_mb_peak": 26022.54,
+        "rss_mb_mean": 13757.064184549357
+      },
+      "postgres_cpu_pct_peak": 260.85,
+      "postgres_rss_mb_peak": 26022.54,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 323.51,
         "service_cpu_legacy_peak_sum_pct": 465.02,
@@ -1828,6 +2132,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.321051,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 239.87,
+        "cpu_pct_mean": 150.38142250530788,
+        "rss_mb_peak": 24588.54,
+        "rss_mb_mean": 13921.824033970273
+      },
+      "postgres_cpu_pct_peak": 239.87,
+      "postgres_rss_mb_peak": 24588.54,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 297.28999999999996,
         "service_cpu_legacy_peak_sum_pct": 440.26,
@@ -1880,6 +2192,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.23299999999999998,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 256.8,
+        "cpu_pct_mean": 145.68508333333332,
+        "rss_mb_peak": 26565.74,
+        "rss_mb_mean": 17108.383854166666
+      },
+      "postgres_cpu_pct_peak": 256.8,
+      "postgres_rss_mb_peak": 26565.74,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 296.89,
         "service_cpu_legacy_peak_sum_pct": 441.03,
@@ -1931,6 +2251,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.329055,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 237.79,
+        "cpu_pct_mean": 46.04770655270655,
+        "rss_mb_peak": 37598.45,
+        "rss_mb_mean": 21558.989358974362
+      },
+      "postgres_cpu_pct_peak": 237.79,
+      "postgres_rss_mb_peak": 37598.45,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 4.89,
         "service_cpu_legacy_peak_sum_pct": 7.8100000000000005,
@@ -1982,6 +2310,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.318368,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 231.96,
+        "cpu_pct_mean": 46.44607449856734,
+        "rss_mb_peak": 36378.79,
+        "rss_mb_mean": 20734.257378223498
+      },
+      "postgres_cpu_pct_peak": 231.96,
+      "postgres_rss_mb_peak": 36378.79,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.87,
         "service_cpu_legacy_peak_sum_pct": 6.84,
@@ -2033,6 +2369,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.427721,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 229.44,
+        "cpu_pct_mean": 46.06490056818182,
+        "rss_mb_peak": 35591.03,
+        "rss_mb_mean": 19737.805085227275
+      },
+      "postgres_cpu_pct_peak": 229.44,
+      "postgres_rss_mb_peak": 35591.03,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 2.94,
         "service_cpu_legacy_peak_sum_pct": 7.8100000000000005,
@@ -2084,6 +2428,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.336685,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 247.01,
+        "cpu_pct_mean": 46.8663976945245,
+        "rss_mb_peak": 38918.25,
+        "rss_mb_mean": 21778.428141210377
+      },
+      "postgres_cpu_pct_peak": 247.01,
+      "postgres_rss_mb_peak": 38918.25,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 3.91,
         "service_cpu_legacy_peak_sum_pct": 5.859999999999999,
@@ -2135,6 +2487,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.28305199999999997,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 252.13,
+        "cpu_pct_mean": 47.81757532281206,
+        "rss_mb_peak": 37074.39,
+        "rss_mb_mean": 20916.587661406025
+      },
+      "postgres_cpu_pct_peak": 252.13,
+      "postgres_rss_mb_peak": 37074.39,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.87,
         "service_cpu_legacy_peak_sum_pct": 6.84,
@@ -2188,6 +2548,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.258908,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 236.86,
+        "cpu_pct_mean": 161.7644565217391,
+        "rss_mb_peak": 49660.88,
+        "rss_mb_mean": 36337.45486956522
+      },
+      "postgres_cpu_pct_peak": 236.86,
+      "postgres_rss_mb_peak": 49660.88,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.84,
         "service_cpu_legacy_peak_sum_pct": 10.74,
@@ -2241,6 +2609,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.22130099999999997,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 253.23,
+        "cpu_pct_mean": 161.77191721132897,
+        "rss_mb_peak": 50941.64,
+        "rss_mb_mean": 38109.04015250545
+      },
+      "postgres_cpu_pct_peak": 253.23,
+      "postgres_rss_mb_peak": 50941.64,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.85,
         "service_cpu_legacy_peak_sum_pct": 9.76,
@@ -2294,6 +2670,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.28997300000000004,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 242.56,
+        "cpu_pct_mean": 161.43280777537794,
+        "rss_mb_peak": 49231.21,
+        "rss_mb_mean": 37285.4188336933
+      },
+      "postgres_cpu_pct_peak": 242.56,
+      "postgres_rss_mb_peak": 49231.21,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.85,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2347,6 +2731,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.273559,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 258.03,
+        "cpu_pct_mean": 162.58274336283185,
+        "rss_mb_peak": 50872.23,
+        "rss_mb_mean": 37811.64373893805
+      },
+      "postgres_cpu_pct_peak": 258.03,
+      "postgres_rss_mb_peak": 50872.23,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 3.91,
         "service_cpu_legacy_peak_sum_pct": 8.8,
@@ -2400,6 +2792,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.392237,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 239.68,
+        "cpu_pct_mean": 162.50008771929825,
+        "rss_mb_peak": 51526.67,
+        "rss_mb_mean": 39491.76524122807
+      },
+      "postgres_cpu_pct_peak": 239.68,
+      "postgres_rss_mb_peak": 51526.67,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.859999999999999,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2453,6 +2853,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.274221,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 282.76,
+        "cpu_pct_mean": 177.1450900900901,
+        "rss_mb_peak": 49000.27,
+        "rss_mb_mean": 39428.41452702703
+      },
+      "postgres_cpu_pct_peak": 282.76,
+      "postgres_rss_mb_peak": 49000.27,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 6.84,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2506,6 +2914,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.210827,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 240.45,
+        "cpu_pct_mean": 172.67789115646258,
+        "rss_mb_peak": 48503.91,
+        "rss_mb_mean": 38603.29530612245
+      },
+      "postgres_cpu_pct_peak": 240.45,
+      "postgres_rss_mb_peak": 48503.91,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.85,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2559,6 +2975,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.309085,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 247.12,
+        "cpu_pct_mean": 172.76448430493272,
+        "rss_mb_peak": 48872.38,
+        "rss_mb_mean": 38388.64257847534
+      },
+      "postgres_cpu_pct_peak": 247.12,
+      "postgres_rss_mb_peak": 48872.38,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 7.79,
         "service_cpu_legacy_peak_sum_pct": 10.739999999999998,
@@ -2612,6 +3036,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.299581,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 249.63,
+        "cpu_pct_mean": 173.9345890410959,
+        "rss_mb_peak": 51433.84,
+        "rss_mb_mean": 40924.83347031963
+      },
+      "postgres_cpu_pct_peak": 249.63,
+      "postgres_rss_mb_peak": 51433.84,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 6.82,
         "service_cpu_legacy_peak_sum_pct": 9.76,
@@ -2665,6 +3097,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.202733,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 247.93,
+        "cpu_pct_mean": 168.61361990950226,
+        "rss_mb_peak": 48363.64,
+        "rss_mb_mean": 38059.63022624435
+      },
+      "postgres_cpu_pct_peak": 247.93,
+      "postgres_rss_mb_peak": 48363.64,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 4.9,
         "service_cpu_legacy_peak_sum_pct": 10.76,
@@ -2718,6 +3158,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.311497,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 274.77,
+        "cpu_pct_mean": 173.54494382022472,
+        "rss_mb_peak": 50330.05,
+        "rss_mb_mean": 40676.760988764036
+      },
+      "postgres_cpu_pct_peak": 274.77,
+      "postgres_rss_mb_peak": 50330.05,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 4.89,
         "service_cpu_legacy_peak_sum_pct": 10.739999999999998,
@@ -2771,6 +3219,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.6330910000000001,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 252.58,
+        "cpu_pct_mean": 174.57750566893424,
+        "rss_mb_peak": 51200.42,
+        "rss_mb_mean": 40294.34623582766
+      },
+      "postgres_cpu_pct_peak": 252.58,
+      "postgres_rss_mb_peak": 51200.42,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 4.89,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2824,6 +3280,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.366812,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 250.35,
+        "cpu_pct_mean": 176.17537414965986,
+        "rss_mb_peak": 50109.93,
+        "rss_mb_mean": 39015.99643990929
+      },
+      "postgres_cpu_pct_peak": 250.35,
+      "postgres_rss_mb_peak": 50109.93,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 4.89,
         "service_cpu_legacy_peak_sum_pct": 9.77,
@@ -2877,6 +3341,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.259441,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 287.6,
+        "cpu_pct_mean": 171.52545454545455,
+        "rss_mb_peak": 50284.59,
+        "rss_mb_mean": 40247.687613636364
+      },
+      "postgres_cpu_pct_peak": 287.6,
+      "postgres_rss_mb_peak": 50284.59,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.859999999999999,
         "service_cpu_legacy_peak_sum_pct": 8.8,
@@ -2930,6 +3402,14 @@
       "open_loop_missed_opportunities_sum": 0,
       "open_loop_scheduling_delay_ms_sum": 0.32313499999999995,
       "warnings": [],
+      "postgres_process": {
+        "cpu_pct_peak": 243.06,
+        "cpu_pct_mean": 175.44815489749428,
+        "rss_mb_peak": 49336.36,
+        "rss_mb_mean": 40343.45601366742
+      },
+      "postgres_cpu_pct_peak": 243.06,
+      "postgres_rss_mb_peak": 49336.36,
       "proxy_tier_cpu": {
         "service_cpu_aligned_peak_pct": 5.85,
         "service_cpu_legacy_peak_sum_pct": 10.75,
@@ -2949,9 +3429,13 @@
     "comparison_cross_tech_latency_p999.png": "comparison_cross_tech_latency_p999.png",
     "comparison_cross_tech_open_loop_missed_opportunities.png": "comparison_cross_tech_open_loop_missed_opportunities.png",
     "comparison_cross_tech_open_loop_scheduling_delay.png": "comparison_cross_tech_open_loop_scheduling_delay.png",
+    "comparison_cross_tech_postgres_process_cpu_peak.png": "comparison_cross_tech_postgres_process_cpu_peak.png",
+    "comparison_cross_tech_postgres_process_rss_peak.png": "comparison_cross_tech_postgres_process_rss_peak.png",
     "comparison_cross_tech_proxy_host_cpu_aligned_peak.png": "comparison_cross_tech_proxy_host_cpu_aligned_peak.png",
     "comparison_cross_tech_throughput_latency_p95.png": "comparison_cross_tech_throughput_latency_p95.png",
     "comparison_cross_tech_throughput_latency_p99.png": "comparison_cross_tech_throughput_latency_p99.png",
+    "comparison_cross_tech_throughput_postgres_cpu.png": "comparison_cross_tech_throughput_postgres_cpu.png",
+    "comparison_cross_tech_throughput_postgres_rss.png": "comparison_cross_tech_throughput_postgres_rss.png",
     "comparison_cross_tech_total_completed_rps.png": "comparison_cross_tech_total_completed_rps.png",
     "comparison_cross_tech_total_successful_requests.png": "comparison_cross_tech_total_successful_requests.png",
     "comparison_cross_tech_total_throughput.png": "comparison_cross_tech_total_throughput.png",

@@ -9,7 +9,12 @@ from typing import Any
 
 import pandas as pd
 
-from stressum.aggregate import aggregate_bundle, is_open_loop, proxy_tier_cpu_summary
+from stressum.aggregate import (
+    aggregate_bundle,
+    is_open_loop,
+    postgres_process_summary,
+    proxy_tier_cpu_summary,
+)
 from stressum.comparison_plots import write_comparison_plots
 from stressum.hdr_merge import merge_run_histogram
 from stressum.load import RunBundle, load_run_bundle
@@ -116,6 +121,7 @@ def run_comparison(
 
         agg = aggregate_bundle(bundle)
         proxy_cpu = proxy_tier_cpu_summary(bundle)
+        postgres_process = postgres_process_summary(bundle)
         ref_p50 = agg.median_p50_ms
         merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
         latency_source = "hdr_merged" if merged is not None else "summary_json_median"
@@ -160,6 +166,12 @@ def run_comparison(
             "open_loop_scheduling_delay_ms_sum": ol_delay,
             "warnings": list(hdr_warnings),
         }
+        if postgres_process is not None:
+            scenario_meta["postgres_process"] = postgres_process
+            if "cpu_pct_peak" in postgres_process:
+                scenario_meta["postgres_cpu_pct_peak"] = postgres_process["cpu_pct_peak"]
+            if "rss_mb_peak" in postgres_process:
+                scenario_meta["postgres_rss_mb_peak"] = postgres_process["rss_mb_peak"]
         if proxy_cpu is not None:
             scenario_meta["proxy_tier_cpu"] = proxy_cpu
             scenario_meta["proxy_service_cpu_aligned_peak_pct"] = proxy_cpu[
@@ -182,7 +194,13 @@ def run_comparison(
 
         scenarios_payload.append(scenario_meta)
 
-        row = run_summary_dict(bundle, agg, proxy_cpu=proxy_cpu, open_loop=ol_any)
+        row = run_summary_dict(
+            bundle,
+            agg,
+            proxy_cpu=proxy_cpu,
+            postgres_process=postgres_process,
+            open_loop=ol_any,
+        )
         row["comparison_label"] = label
         row["comparison_path_resolved"] = str(run_path)
         row["latency_percentiles_source"] = latency_source
@@ -207,6 +225,7 @@ def run_comparison(
                 "agg": agg,
                 "merged": merged,
                 "proxy_cpu": proxy_cpu,
+                "postgres_process": postgres_process,
             }
         )
 
