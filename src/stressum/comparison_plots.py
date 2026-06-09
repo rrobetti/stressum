@@ -154,6 +154,14 @@ def _cross_tech_output_path(out_dir: Path, base: str) -> Path:
     return out_dir / f"{base}.png"
 
 
+def _footprint_metric(scenario: dict[str, Any], key: str) -> float:
+    footprint = scenario.get("total_footprint") or {}
+    value = footprint.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
 def plot_cross_technology_grouped_bars(
     load_points: list[str],
     technologies: list[str],
@@ -556,6 +564,59 @@ def _write_cross_technology_plots(
             metric_getter=lambda scenario: _postgres_process_metric(scenario, "rss_mb_peak"),
             ylabel="PostgreSQL process RSS peak (MB)",
             title="Cross-technology throughput–PostgreSQL RSS curve",
+        )
+
+    footprint_any = any(
+        lookup.get((load_point, technology), {}).get("total_footprint") is not None
+        for load_point in load_points
+        for technology in technologies
+    )
+    if footprint_any:
+        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_cpu_peak")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            _values(lambda scenario: _footprint_metric(scenario, "total_cpu_pct")),
+            out,
+            ylabel="Total CPU (virtual core budget, %)",
+            title="Cross-technology total CPU by load point (bench + PostgreSQL + proxy/LB)",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_rss_peak")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            _values(lambda scenario: _footprint_metric(scenario, "total_rss_mb_peak")),
+            out,
+            ylabel="Total RSS peak (MB; excludes bench/LG)",
+            title="Cross-technology total RSS by load point (PostgreSQL + proxy/LB only)",
+        )
+        _register_plot_path(paths, out, out_dir)
+
+        _write_cross_technology_throughput_metric_curve(
+            load_points,
+            technologies,
+            lookup,
+            out_dir,
+            paths,
+            base="comparison_cross_tech_throughput_total_cpu",
+            metric_getter=lambda scenario: _footprint_metric(scenario, "total_cpu_pct"),
+            ylabel="Total CPU (virtual core budget, %)",
+            title="Cross-technology throughput–total CPU curve",
+        )
+        _write_cross_technology_throughput_metric_curve(
+            load_points,
+            technologies,
+            lookup,
+            out_dir,
+            paths,
+            base="comparison_cross_tech_throughput_total_rss",
+            metric_getter=lambda scenario: _footprint_metric(scenario, "total_rss_mb_peak"),
+            ylabel="Total RSS peak (MB; excludes bench/LG)",
+            title="Cross-technology throughput–total RSS curve",
         )
 
     open_loop_any = False

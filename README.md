@@ -30,7 +30,7 @@ uv run stressum
 Output is written to `<project-root>/output/comparison-<YYYY-MM-dd-HHMMSS-microseconds>/` (or `./output/...` from the current working directory when the checkout root cannot be detected) and includes:
 
 - `comparison_metadata.json` — scenarios, paths, HDR merge status, fairness warnings when `workload` / `loadMode` / `targetRps` differ across runs
-- `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist, proxy-tier CPU, PostgreSQL process CPU/RSS when node metrics exist)
+- `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist, proxy-tier CPU, PostgreSQL process CPU/RSS when node metrics exist, **total resource footprint** columns — see [Total resource footprint](#total-resource-footprint-cross-technology))
 - PNG figures — see [Generated figures](#generated-figures) below
 
 Plot styling uses a fixed NumPy RNG seed for reproducible figures.
@@ -74,8 +74,92 @@ Grouped bar charts place technologies side by side at each shared load point. Th
 | `comparison_cross_tech_throughput_latency_p99.png` | Line curve | p99 latency (ms) vs target RPS | Y-axis log scale |
 | `comparison_cross_tech_throughput_postgres_cpu.png` | Line curve | PostgreSQL CPU peak (%) vs target RPS | Requires `db_proc_metrics.csv` |
 | `comparison_cross_tech_throughput_postgres_rss.png` | Line curve | PostgreSQL RSS peak (MB) vs target RPS | Requires `db_proc_metrics.csv` |
+| `comparison_cross_tech_total_cpu_peak.png` | Grouped bars | Total CPU (virtual core budget, %) | One bar per technology; `total_cpu_pct` (bench + PostgreSQL + proxy/LB) |
+| `comparison_cross_tech_total_rss_peak.png` | Grouped bars | Total RSS peak (MB) | One bar per technology; `total_rss_mb_peak` (**excludes bench/LG**) |
+| `comparison_cross_tech_throughput_total_cpu.png` | Line curve | Total CPU (%) vs target RPS | Sum of bench + PostgreSQL + proxy aligned peaks |
+| `comparison_cross_tech_throughput_total_rss.png` | Line curve | Total RSS peak (MB) vs target RPS | PostgreSQL + proxy/LB RSS only |
 
 Fixed colours: OJP = steelblue, Hikari = darkorange, pgBouncer = mediumseagreen.
+
+## Total resource footprint (cross-technology)
+
+Comparison figures and `comparison_summary.csv` include **aggregated resource totals**
+intended to reflect the full benchmark stack: bench replicas (load generators),
+PostgreSQL, and the proxy tier (OJP or pgBouncer nodes plus HAProxy when present).
+These are **operational footprint proxies**, not cloud billing lines.
+
+### What is included
+
+| Layer | CPU | Memory (RSS) |
+|-------|-----|--------------|
+| **Bench replicas (LG)** | Yes — sum of per-replica `appCpuMedian` from `replica-*/summary.json` (`bench_jvm_cpu`, in-process median during steady-state) | **No** — load-generator RSS is not collected in exported bundles |
+| **PostgreSQL** | Yes — peak of `cpu_pct` in `node_metrics/db/db_proc_metrics.csv` | Yes — peak of `rss_mb` in the same file |
+| **Proxy tier** | Yes — time-aligned sum of `cpu_pct` across `node_metrics/proxy/*_proc_metrics.csv` and `node_metrics/lb/*_proc_metrics.csv`, then peak (`service_cpu` aligned peak; same scope as per-scenario proxy CPU plots) | Yes — time-aligned sum of `rss_mb` across the same proxy/LB CSVs, then peak |
+| **HAProxy** | Included in proxy-tier rollup (pgBouncer scenario only) | Included in proxy-tier rollup |
+
+Hikari runs have no proxy/LB CSVs; those components contribute **0** in the rollup.
+
+### How totals are computed
+
+**Total CPU (reported %)** — sum of independent peaks (components may peak at
+different timestamps):
+
+```
+total_cpu_pct ≈ bench_cpu_sum_pct
+              + postgres_cpu_pct_peak
+              + proxy_service_cpu_aligned_peak_pct
+```
+
+where `bench_cpu_sum_pct = Σ appCpuMedian` over all replicas present in the
+bundle (`replicas_in_bundle` / `bench_replica_count` in `run_metadata.json`).
+
+Units: each term is **% of one CPU core** for the measured process (or aligned
+sum across nodes). The total is a **virtual core budget** across machines, useful
+for comparing topologies, not a single-host utilization percentage.
+
+**Total memory (reported MB)** — **partial**; bench/LG memory is **excluded**:
+
+```
+total_rss_mb_peak ≈ postgres_rss_mb_peak + proxy_rss_mb_aligned_peak
+```
+
+Proxy RSS uses OS RSS from `*_proc_metrics.csv`. For OJP proxy nodes, OS RSS can
+overstate live JVM heap; see `stressar-docs/METRICS.md` (prefer `heap_used_mb` in
+`*_jvm_metrics.csv` for OJP heap analysis — that series is **not** folded into
+`total_rss_mb_peak` today).
+
+There is **no** `appRssMedian` (or other LG side-car) in exported runs; total
+memory charts and CSV columns must **not** be read as “application + infra RAM”.
+
+### Cross-technology charts (when emitted)
+
+Grouped bar charts at each shared load point place **one bar per technology**
+(OJP, Hikari, pgBouncer) side by side, using the fixed colour palette above.
+Per-component breakdown (bench vs PostgreSQL vs proxy) is available in
+`comparison_summary.csv`, not in these total figures.
+
+### `comparison_summary.csv` columns
+
+| Column | Meaning |
+|--------|---------|
+| `bench_cpu_sum_pct` | Σ `appCpuMedian` across replicas |
+| `total_cpu_pct` | bench + PostgreSQL + proxy aligned peak (see formula above) |
+| `proxy_rss_mb_aligned_peak` | Time-aligned peak sum of proxy/LB `rss_mb` |
+| `total_rss_mb_peak` | PostgreSQL RSS peak + proxy RSS aligned peak (**excludes bench**) |
+
+### Interpretation notes
+
+- **Throughput** in comparison outputs remains the **sum across bench replicas**;
+  resource totals use the same replica set as the bundle on disk (not necessarily
+  the full 16-replica production layout unless the export contains all replicas).
+- **PgBouncer** scenarios still use **local HikariCP** on bench JVMs
+  (`clientPooling: hikari`); only **OJP** removes the client-side pool. Compare
+  bench CPU between Hikari and OJP for “pool in every microservice vs centralized
+  proxy” on the application tier.
+- Including PostgreSQL in totals reflects **different connection budgets per
+  topology** (~300 direct for Hikari vs ~48 via proxy), not only pooling overhead.
+  Use per-component CSV columns (`bench_cpu_sum_pct`, `postgres_*`, `proxy_*`) to
+  see where cost sits.
 
 ### Per-technology bar charts (subfolders)
 

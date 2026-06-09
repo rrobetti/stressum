@@ -29,5 +29,6 @@
   },
   "errorsByType": {
     "PSQLException": 20
-  }
+  },
+  "appCpuMedian": 0.7
 }

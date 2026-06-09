@@ -40,6 +40,7 @@ def run_summary_dict(
     *,
     proxy_cpu: dict[str, float] | None = None,
     postgres_process: dict[str, float] | None = None,
+    total_footprint: dict[str, float] | None = None,
     open_loop: bool = False,
 ) -> dict[str, Any]:
     meta = bundle.metadata or {}
@@ -89,6 +90,16 @@ def run_summary_dict(
         row["postgres_cpu_pct_mean"] = ""
         row["postgres_rss_mb_peak"] = ""
         row["postgres_rss_mb_mean"] = ""
+    if total_footprint is not None:
+        row["bench_cpu_sum_pct"] = total_footprint["bench_cpu_sum_pct"]
+        row["proxy_rss_mb_aligned_peak"] = total_footprint.get("proxy_rss_mb_aligned_peak", "")
+        row["total_cpu_pct"] = total_footprint["total_cpu_pct"]
+        row["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
+    else:
+        row["bench_cpu_sum_pct"] = ""
+        row["proxy_rss_mb_aligned_peak"] = ""
+        row["total_cpu_pct"] = ""
+        row["total_rss_mb_peak"] = ""
     return row
 
 

@@ -4,11 +4,14 @@ from pathlib import Path
 
 from stressum.aggregate import (
     aggregate_bundle,
+    bench_jvm_cpu_summary,
     is_open_loop,
     postgres_process_summary,
     proxy_tier_cpu_summary,
     proxy_tier_cpu_timeseries,
     proxy_tier_host_cpu_timeseries,
+    proxy_tier_rss_summary,
+    total_resource_footprint_summary,
 )
 from stressum.load import load_run_bundle
 
@@ -149,3 +152,50 @@ def test_proxy_tier_cpu_timeseries(tmp_path: Path) -> None:
     assert aligned_peak == 55.0
     assert float(t0.iloc[-1]) == 1.0
     assert float(tier_sum.iloc[-1]) == 55.0
+
+
+def test_proxy_tier_rss_summary(tmp_path: Path) -> None:
+    run_dir = tmp_path / "proxy-run"
+    proxy_dir = run_dir / "node_metrics" / "proxy"
+    proxy_dir.mkdir(parents=True)
+    csv_a = proxy_dir / "node-a_proc_metrics.csv"
+    csv_b = proxy_dir / "node-b_proc_metrics.csv"
+    csv_a.write_text(
+        "timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n"
+        "2026-01-01T00:00:00Z,1,10.0,20.0,100,200\n"
+        "2026-01-01T00:00:01Z,1,30.0,40.0,150,200\n",
+        encoding="utf-8",
+    )
+    csv_b.write_text(
+        "timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n"
+        "2026-01-01T00:00:00Z,2,5.0,10.0,80,200\n"
+        "2026-01-01T00:00:01Z,2,25.0,30.0,120,200\n",
+        encoding="utf-8",
+    )
+    bundle = load_run_bundle(FIXTURE)
+    bundle.run_dir = run_dir
+    bundle.node_metrics_csvs = {
+        "node_metrics/proxy/node-a_proc_metrics.csv": csv_a,
+        "node_metrics/proxy/node-b_proc_metrics.csv": csv_b,
+    }
+    summary = proxy_tier_rss_summary(bundle)
+    assert summary is not None
+    assert summary["rss_mb_aligned_peak"] == 270.0
+
+
+def test_bench_jvm_cpu_summary_sums_app_cpu_median() -> None:
+    bundle = load_run_bundle(FIXTURE)
+    summary = bench_jvm_cpu_summary(bundle)
+    assert summary["bench_cpu_sum_pct"] == 1.2
+
+
+def test_total_resource_footprint_summary_from_fixture() -> None:
+    bundle = load_run_bundle(FIXTURE)
+    footprint = total_resource_footprint_summary(bundle)
+    assert footprint["bench_cpu_sum_pct"] == 1.2
+    assert footprint["postgres_cpu_pct_peak"] == 3.25
+    assert footprint["proxy_service_cpu_aligned_peak_pct"] == 0.0
+    assert abs(footprint["total_cpu_pct"] - 4.45) < 1e-9
+    assert footprint["postgres_rss_mb_peak"] == 131.0
+    assert footprint["proxy_rss_mb_aligned_peak"] == 0.0
+    assert footprint["total_rss_mb_peak"] == 131.0

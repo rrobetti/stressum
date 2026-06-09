@@ -31,5 +31,6 @@
   },
   "errorsByType": {
     "SQLTimeoutException": 10
-  }
+  },
+  "appCpuMedian": 0.5
 }

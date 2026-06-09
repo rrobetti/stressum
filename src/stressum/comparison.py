@@ -14,6 +14,7 @@ from stressum.aggregate import (
     is_open_loop,
     postgres_process_summary,
     proxy_tier_cpu_summary,
+    total_resource_footprint_summary,
 )
 from stressum.comparison_plots import write_comparison_plots
 from stressum.hdr_merge import merge_run_histogram
@@ -122,6 +123,7 @@ def run_comparison(
         agg = aggregate_bundle(bundle)
         proxy_cpu = proxy_tier_cpu_summary(bundle)
         postgres_process = postgres_process_summary(bundle)
+        total_footprint = total_resource_footprint_summary(bundle)
         ref_p50 = agg.median_p50_ms
         merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
         latency_source = "hdr_merged" if merged is not None else "summary_json_median"
@@ -183,6 +185,11 @@ def run_comparison(
             host_peak = proxy_cpu.get("host_cpu_aligned_peak_pct")
             if isinstance(host_peak, (int, float)):
                 scenario_meta["proxy_host_cpu_aligned_peak_pct"] = float(host_peak)
+        scenario_meta["total_footprint"] = total_footprint
+        scenario_meta["bench_cpu_sum_pct"] = total_footprint["bench_cpu_sum_pct"]
+        scenario_meta["total_cpu_pct"] = total_footprint["total_cpu_pct"]
+        scenario_meta["proxy_rss_mb_aligned_peak"] = total_footprint["proxy_rss_mb_aligned_peak"]
+        scenario_meta["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
         if merged is not None:
             scenario_meta["merged_latency_ms"] = {
                 "p50": merged.p50_ms,
@@ -199,6 +206,7 @@ def run_comparison(
             agg,
             proxy_cpu=proxy_cpu,
             postgres_process=postgres_process,
+            total_footprint=total_footprint,
             open_loop=ol_any,
         )
         row["comparison_label"] = label
@@ -226,6 +234,7 @@ def run_comparison(
                 "merged": merged,
                 "proxy_cpu": proxy_cpu,
                 "postgres_process": postgres_process,
+                "total_footprint": total_footprint,
             }
         )
 

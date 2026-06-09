@@ -363,6 +363,88 @@ def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
     return out
 
 
+def _proxy_tier_rss_rollups(bundle: RunBundle) -> tuple[pd.Series, float] | None:
+    """Return (time-aligned rss_mb sum series, aligned_peak) or None."""
+    proc_paths = _proxy_tier_proc_paths(bundle)
+    if not proc_paths:
+        return None
+
+    series_by_node: list[pd.Series] = []
+    for path in proc_paths:
+        try:
+            df = read_node_csv(path)
+        except Exception:
+            continue
+        if "timestamp" not in df.columns or "rss_mb" not in df.columns:
+            continue
+        ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        rss = pd.to_numeric(df["rss_mb"], errors="coerce")
+        valid = ts.notna() & rss.notna()
+        if not valid.any():
+            continue
+        node = pd.Series(rss[valid].values, index=ts[valid])
+        node = node.groupby(level=0).mean()
+        series_by_node.append(node)
+
+    if not series_by_node:
+        return None
+
+    combined = pd.concat(series_by_node, axis=1).fillna(0.0)
+    tier_sum = combined.sum(axis=1)
+    aligned_peak = float(tier_sum.max())
+    return tier_sum, aligned_peak
+
+
+def proxy_tier_rss_summary(bundle: RunBundle) -> dict[str, float] | None:
+    """Time-aligned proxy tier RSS rollup (sum of rss_mb across proxy/LB nodes)."""
+    rollups = _proxy_tier_rss_rollups(bundle)
+    if rollups is None:
+        return None
+    tier_sum, aligned_peak = rollups
+    return {
+        "rss_mb_aligned_peak": aligned_peak,
+        "rss_mb_mean": float(tier_sum.mean()),
+    }
+
+
+def bench_jvm_cpu_summary(bundle: RunBundle) -> dict[str, float]:
+    """Sum of per-replica appCpuMedian (bench JVM service_cpu, in-process)."""
+    total = 0.0
+    for summary in bundle.summaries:
+        v = summary.get("appCpuMedian")
+        if isinstance(v, (int, float)):
+            total += float(v)
+    return {"bench_cpu_sum_pct": total}
+
+
+def total_resource_footprint_summary(bundle: RunBundle) -> dict[str, float]:
+    """
+    Aggregated resource footprint: bench replicas + PostgreSQL + proxy/LB tier.
+
+    CPU total sums independent peaks (components may peak at different times).
+    Memory total excludes bench/LG RSS (not collected in exported bundles).
+    """
+    bench_cpu = bench_jvm_cpu_summary(bundle)["bench_cpu_sum_pct"]
+    postgres = postgres_process_summary(bundle) or {}
+    proxy_cpu = proxy_tier_cpu_summary(bundle) or {}
+    proxy_rss = proxy_tier_rss_summary(bundle) or {}
+
+    postgres_cpu_peak = float(postgres.get("cpu_pct_peak") or 0.0)
+    proxy_cpu_peak = float(proxy_cpu.get("service_cpu_aligned_peak_pct") or 0.0)
+    postgres_rss_peak = float(postgres.get("rss_mb_peak") or 0.0)
+    proxy_rss_peak = float(proxy_rss.get("rss_mb_aligned_peak") or 0.0)
+
+    return {
+        "bench_cpu_sum_pct": bench_cpu,
+        "postgres_cpu_pct_peak": postgres_cpu_peak,
+        "proxy_service_cpu_aligned_peak_pct": proxy_cpu_peak,
+        "total_cpu_pct": bench_cpu + postgres_cpu_peak + proxy_cpu_peak,
+        "postgres_rss_mb_peak": postgres_rss_peak,
+        "proxy_rss_mb_aligned_peak": proxy_rss_peak,
+        "total_rss_mb_peak": postgres_rss_peak + proxy_rss_peak,
+    }
+
+
 def node_metrics_numeric_summary(paths: dict[str, Path]) -> pd.DataFrame:
     """One row per CSV file: path + mean/std for numeric columns."""
     out_rows: list[dict[str, Any]] = []
