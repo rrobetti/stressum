@@ -74,10 +74,18 @@ Grouped bar charts place technologies side by side at each shared load point. Th
 | `comparison_cross_tech_throughput_latency_p99.png` | Line curve | p99 latency (ms) vs target RPS | Y-axis log scale |
 | `comparison_cross_tech_throughput_postgres_cpu.png` | Line curve | PostgreSQL CPU peak (%) vs target RPS | Requires `db_proc_metrics.csv` |
 | `comparison_cross_tech_throughput_postgres_rss.png` | Line curve | PostgreSQL RSS peak (MB) vs target RPS | Requires `db_proc_metrics.csv` |
-| `comparison_cross_tech_total_cpu_peak.png` | Grouped bars | Total CPU (virtual core budget, %) | One bar per technology; `total_cpu_pct` (bench + PostgreSQL + proxy/LB) |
-| `comparison_cross_tech_total_rss_peak.png` | Grouped bars | Total RSS peak (MB) | One bar per technology; `total_rss_mb_peak` (**excludes bench/LG**) |
-| `comparison_cross_tech_throughput_total_cpu.png` | Line curve | Total CPU (%) vs target RPS | Sum of bench + PostgreSQL + proxy aligned peaks |
-| `comparison_cross_tech_throughput_total_rss.png` | Line curve | Total RSS peak (MB) vs target RPS | PostgreSQL + proxy/LB RSS only |
+| `comparison_cross_tech_total_cpu_peak.png` | Grouped bars | Total CPU peak (virtual core budget, %) | `total_cpu_pct` — worst-case sum of component peaks |
+| `comparison_cross_tech_total_cpu_mean.png` | Grouped bars | Total CPU mean (virtual core budget, %) | `total_cpu_mean_pct` — typical steady-state operating cost |
+| `comparison_cross_tech_total_cpu_p95.png` | Grouped bars | Total CPU p95 (virtual core budget, %) | `total_cpu_p95_pct` — sustained high load without single-spike max |
+| `comparison_cross_tech_total_rss_peak.png` | Grouped bars | Total RSS peak (MB) | `total_rss_mb_peak` (**excludes bench/LG**) |
+| `comparison_cross_tech_total_rss_mean.png` | Grouped bars | Total RSS mean (MB) | `total_rss_mb_mean` (**excludes bench/LG**) |
+| `comparison_cross_tech_total_rss_p95.png` | Grouped bars | Total RSS p95 (MB) | `total_rss_mb_p95` (**excludes bench/LG**) |
+| `comparison_cross_tech_throughput_total_cpu_peak.png` | Line curve | Total CPU peak (%) vs target RPS | Capacity / worst-case |
+| `comparison_cross_tech_throughput_total_cpu_mean.png` | Line curve | Total CPU mean (%) vs target RPS | Typical operating cost |
+| `comparison_cross_tech_throughput_total_cpu_p95.png` | Line curve | Total CPU p95 (%) vs target RPS | Sustained high load |
+| `comparison_cross_tech_throughput_total_rss_peak.png` | Line curve | Total RSS peak (MB) vs target RPS | PostgreSQL + proxy/LB only |
+| `comparison_cross_tech_throughput_total_rss_mean.png` | Line curve | Total RSS mean (MB) vs target RPS | PostgreSQL + proxy/LB only |
+| `comparison_cross_tech_throughput_total_rss_p95.png` | Line curve | Total RSS p95 (MB) vs target RPS | PostgreSQL + proxy/LB only |
 
 Fixed colours: OJP = steelblue, Hikari = darkorange, pgBouncer = mediumseagreen.
 
@@ -101,8 +109,14 @@ Hikari runs have no proxy/LB CSVs; those components contribute **0** in the roll
 
 ### How totals are computed
 
-**Total CPU (reported %)** — sum of independent peaks (components may peak at
-different timestamps):
+Three rollups are emitted for each resource family. **Peak** answers capacity /
+worst-case sizing; **mean** and **p95** better reflect typical steady-state use.
+
+**Bench CPU** (all CPU totals): `bench_cpu_sum_pct = Σ appCpuMedian` over replicas
+(median in-process CPU per replica during steady-state).
+
+**Total CPU peak (`total_cpu_pct`)** — sum of independent peaks (components may
+peak at different timestamps):
 
 ```
 total_cpu_pct ≈ bench_cpu_sum_pct
@@ -110,18 +124,47 @@ total_cpu_pct ≈ bench_cpu_sum_pct
               + proxy_service_cpu_aligned_peak_pct
 ```
 
-where `bench_cpu_sum_pct = Σ appCpuMedian` over all replicas present in the
-bundle (`replicas_in_bundle` / `bench_replica_count` in `run_metadata.json`).
+**Total CPU mean (`total_cpu_mean_pct`)** — sum of component means:
 
-Units: each term is **% of one CPU core** for the measured process (or aligned
-sum across nodes). The total is a **virtual core budget** across machines, useful
-for comparing topologies, not a single-host utilization percentage.
+```
+total_cpu_mean_pct ≈ bench_cpu_sum_pct
+                   + postgres_cpu_pct_mean
+                   + proxy_service_cpu_mean_pct
+```
 
-**Total memory (reported MB)** — **partial**; bench/LG memory is **excluded**:
+(`proxy_service_cpu_mean_pct` is the mean of the time-aligned proxy-tier CPU sum
+series.)
+
+**Total CPU p95 (`total_cpu_p95_pct`)** — sum of component p95 values:
+
+```
+total_cpu_p95_pct ≈ bench_cpu_sum_pct
+                  + postgres_cpu_pct_p95
+                  + proxy_service_cpu_aligned_p95_pct
+```
+
+**Total memory peak (`total_rss_mb_peak`)** — **partial**; bench/LG memory is
+**excluded**:
 
 ```
 total_rss_mb_peak ≈ postgres_rss_mb_peak + proxy_rss_mb_aligned_peak
 ```
+
+**Total memory mean (`total_rss_mb_mean`)**:
+
+```
+total_rss_mb_mean ≈ postgres_rss_mb_mean + proxy_rss_mb_mean
+```
+
+**Total memory p95 (`total_rss_mb_p95`)**:
+
+```
+total_rss_mb_p95 ≈ postgres_rss_mb_p95 + proxy_rss_mb_aligned_p95
+```
+
+Units: CPU values are **% of one CPU core** per process (or aligned sum across
+nodes). Totals are a **virtual core budget** across machines, not single-host
+utilization.
 
 Proxy RSS uses OS RSS from `*_proc_metrics.csv`. For OJP proxy nodes, OS RSS can
 overstate live JVM heap; see `stressar-docs/METRICS.md` (prefer `heap_used_mb` in
@@ -143,9 +186,13 @@ Per-component breakdown (bench vs PostgreSQL vs proxy) is available in
 | Column | Meaning |
 |--------|---------|
 | `bench_cpu_sum_pct` | Σ `appCpuMedian` across replicas |
-| `total_cpu_pct` | bench + PostgreSQL + proxy aligned peak (see formula above) |
+| `total_cpu_pct` | bench + PostgreSQL + proxy aligned **peak** |
+| `total_cpu_mean_pct` | bench + PostgreSQL mean + proxy tier mean CPU |
+| `total_cpu_p95_pct` | bench + PostgreSQL p95 + proxy tier aligned p95 CPU |
 | `proxy_rss_mb_aligned_peak` | Time-aligned peak sum of proxy/LB `rss_mb` |
 | `total_rss_mb_peak` | PostgreSQL RSS peak + proxy RSS aligned peak (**excludes bench**) |
+| `total_rss_mb_mean` | PostgreSQL RSS mean + proxy RSS mean (**excludes bench**) |
+| `total_rss_mb_p95` | PostgreSQL RSS p95 + proxy RSS aligned p95 (**excludes bench**) |
 
 ### Interpretation notes
 

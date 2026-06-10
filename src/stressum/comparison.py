@@ -103,12 +103,15 @@ def run_comparison(
     scenario_rows: list[dict[str, Any]] = []
     scenarios_plot: list[dict[str, Any]] = []
 
-    for item in runs_cfg:
+    print(f"Loading {len(runs_cfg)} benchmark run(s)...", flush=True)
+    for run_idx, item in enumerate(runs_cfg, start=1):
         path_str = item["path"]
         run_path = resolve_run_path(config_path, path_str)
         label = item.get("label")
         if not isinstance(label, str) or not label.strip():
             label = run_path.name
+
+        print(f"  [{run_idx}/{len(runs_cfg)}] {label} ({run_path})", flush=True)
 
         try:
             bundle = load_run_bundle(run_path)
@@ -125,6 +128,11 @@ def run_comparison(
         postgres_process = postgres_process_summary(bundle)
         total_footprint = total_resource_footprint_summary(bundle)
         ref_p50 = agg.median_p50_ms
+        if bundle.hdr_paths:
+            print(
+                f"    Merging HDR histograms ({len(bundle.hdr_paths)} file(s))...",
+                flush=True,
+            )
         merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
         latency_source = "hdr_merged" if merged is not None else "summary_json_median"
 
@@ -188,8 +196,12 @@ def run_comparison(
         scenario_meta["total_footprint"] = total_footprint
         scenario_meta["bench_cpu_sum_pct"] = total_footprint["bench_cpu_sum_pct"]
         scenario_meta["total_cpu_pct"] = total_footprint["total_cpu_pct"]
+        scenario_meta["total_cpu_mean_pct"] = total_footprint["total_cpu_mean_pct"]
+        scenario_meta["total_cpu_p95_pct"] = total_footprint["total_cpu_p95_pct"]
         scenario_meta["proxy_rss_mb_aligned_peak"] = total_footprint["proxy_rss_mb_aligned_peak"]
         scenario_meta["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
+        scenario_meta["total_rss_mb_mean"] = total_footprint["total_rss_mb_mean"]
+        scenario_meta["total_rss_mb_p95"] = total_footprint["total_rss_mb_p95"]
         if merged is not None:
             scenario_meta["merged_latency_ms"] = {
                 "p50": merged.p50_ms,
@@ -241,7 +253,9 @@ def run_comparison(
     global_warnings = _fairness_warnings(scenarios_plot)
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    print("Generating comparison plots...", flush=True)
     plot_paths = write_comparison_plots(scenarios_plot, out_dir)
+    print(f"  Generated {len(plot_paths)} chart(s)", flush=True)
 
     try:
         stressum_ver = version("stressum")
@@ -263,6 +277,7 @@ def run_comparison(
         "scenarios": scenarios_payload,
         "artifacts": artifacts,
     }
+    print("Writing comparison metadata and summary CSV...", flush=True)
     (out_dir / "comparison_metadata.json").write_text(
         json.dumps(full_meta, indent=2),
         encoding="utf-8",

@@ -162,6 +162,90 @@ def _footprint_metric(scenario: dict[str, Any], key: str) -> float:
     return 0.0
 
 
+def _write_total_footprint_cross_tech_charts(
+    load_points: list[str],
+    technologies: list[str],
+    lookup: dict[tuple[str, str], dict[str, Any]],
+    out_dir: Path,
+    paths: dict[str, Path],
+    *,
+    _values: Any,
+) -> None:
+    chart_specs = (
+        (
+            "comparison_cross_tech_total_cpu_peak",
+            "total_cpu_pct",
+            "Total CPU peak (virtual core budget, %)",
+            "Cross-technology total CPU peak by load point (bench + PostgreSQL + proxy/LB)",
+            "comparison_cross_tech_throughput_total_cpu_peak",
+            "Cross-technology throughput–total CPU peak curve",
+        ),
+        (
+            "comparison_cross_tech_total_cpu_mean",
+            "total_cpu_mean_pct",
+            "Total CPU mean (virtual core budget, %)",
+            "Cross-technology total CPU mean by load point (bench + PostgreSQL + proxy/LB)",
+            "comparison_cross_tech_throughput_total_cpu_mean",
+            "Cross-technology throughput–total CPU mean curve",
+        ),
+        (
+            "comparison_cross_tech_total_cpu_p95",
+            "total_cpu_p95_pct",
+            "Total CPU p95 (virtual core budget, %)",
+            "Cross-technology total CPU p95 by load point (bench + PostgreSQL + proxy/LB)",
+            "comparison_cross_tech_throughput_total_cpu_p95",
+            "Cross-technology throughput–total CPU p95 curve",
+        ),
+        (
+            "comparison_cross_tech_total_rss_peak",
+            "total_rss_mb_peak",
+            "Total RSS peak (MB; excludes bench/LG)",
+            "Cross-technology total RSS peak by load point (PostgreSQL + proxy/LB only)",
+            "comparison_cross_tech_throughput_total_rss_peak",
+            "Cross-technology throughput–total RSS peak curve",
+        ),
+        (
+            "comparison_cross_tech_total_rss_mean",
+            "total_rss_mb_mean",
+            "Total RSS mean (MB; excludes bench/LG)",
+            "Cross-technology total RSS mean by load point (PostgreSQL + proxy/LB only)",
+            "comparison_cross_tech_throughput_total_rss_mean",
+            "Cross-technology throughput–total RSS mean curve",
+        ),
+        (
+            "comparison_cross_tech_total_rss_p95",
+            "total_rss_mb_p95",
+            "Total RSS p95 (MB; excludes bench/LG)",
+            "Cross-technology total RSS p95 by load point (PostgreSQL + proxy/LB only)",
+            "comparison_cross_tech_throughput_total_rss_p95",
+            "Cross-technology throughput–total RSS p95 curve",
+        ),
+    )
+    for base, metric_key, ylabel, title, curve_base, curve_title in chart_specs:
+        out = _cross_tech_output_path(out_dir, base)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plot_cross_technology_grouped_bars(
+            load_points,
+            technologies,
+            _values(lambda scenario, key=metric_key: _footprint_metric(scenario, key)),
+            out,
+            ylabel=ylabel,
+            title=title,
+        )
+        _register_plot_path(paths, out, out_dir)
+        _write_cross_technology_throughput_metric_curve(
+            load_points,
+            technologies,
+            lookup,
+            out_dir,
+            paths,
+            base=curve_base,
+            metric_getter=lambda scenario, key=metric_key: _footprint_metric(scenario, key),
+            ylabel=ylabel,
+            title=curve_title,
+        )
+
+
 def plot_cross_technology_grouped_bars(
     load_points: list[str],
     technologies: list[str],
@@ -572,51 +656,13 @@ def _write_cross_technology_plots(
         for technology in technologies
     )
     if footprint_any:
-        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_cpu_peak")
-        out.parent.mkdir(parents=True, exist_ok=True)
-        plot_cross_technology_grouped_bars(
-            load_points,
-            technologies,
-            _values(lambda scenario: _footprint_metric(scenario, "total_cpu_pct")),
-            out,
-            ylabel="Total CPU (virtual core budget, %)",
-            title="Cross-technology total CPU by load point (bench + PostgreSQL + proxy/LB)",
-        )
-        _register_plot_path(paths, out, out_dir)
-
-        out = _cross_tech_output_path(out_dir, "comparison_cross_tech_total_rss_peak")
-        out.parent.mkdir(parents=True, exist_ok=True)
-        plot_cross_technology_grouped_bars(
-            load_points,
-            technologies,
-            _values(lambda scenario: _footprint_metric(scenario, "total_rss_mb_peak")),
-            out,
-            ylabel="Total RSS peak (MB; excludes bench/LG)",
-            title="Cross-technology total RSS by load point (PostgreSQL + proxy/LB only)",
-        )
-        _register_plot_path(paths, out, out_dir)
-
-        _write_cross_technology_throughput_metric_curve(
+        _write_total_footprint_cross_tech_charts(
             load_points,
             technologies,
             lookup,
             out_dir,
             paths,
-            base="comparison_cross_tech_throughput_total_cpu",
-            metric_getter=lambda scenario: _footprint_metric(scenario, "total_cpu_pct"),
-            ylabel="Total CPU (virtual core budget, %)",
-            title="Cross-technology throughput–total CPU curve",
-        )
-        _write_cross_technology_throughput_metric_curve(
-            load_points,
-            technologies,
-            lookup,
-            out_dir,
-            paths,
-            base="comparison_cross_tech_throughput_total_rss",
-            metric_getter=lambda scenario: _footprint_metric(scenario, "total_rss_mb_peak"),
-            ylabel="Total RSS peak (MB; excludes bench/LG)",
-            title="Cross-technology throughput–total RSS curve",
+            _values=_values,
         )
 
     open_loop_any = False
@@ -1207,7 +1253,13 @@ def write_comparison_plots(
     else:
         lat_title = "Latency percentiles (median of per-replica summary.json)"
 
-    for technology, group in _group_scenarios_by_technology(scenarios):
+    tech_groups = list(_group_scenarios_by_technology(scenarios))
+    for tech_idx, (technology, group) in enumerate(tech_groups, start=1):
+        print(
+            f"  Technology charts [{tech_idx}/{len(tech_groups)}]: "
+            f"{technology} ({len(group)} scenario(s))",
+            flush=True,
+        )
         raw_labels = [s["label"] for s in group]
         labels = _short_bar_labels(raw_labels, technology)
         successful_totals = [s["agg"].total_successful_rps for s in group]
@@ -1345,9 +1397,11 @@ def write_comparison_plots(
         ("comparison_postgres_process_rss", plot_scenario_postgres_process_rss),
         ("comparison_jvm_heap", plot_scenario_jvm_heap),
     ]
-    for s in scenarios:
+    print(f"  Per-scenario charts ({len(scenarios)} scenario(s))...", flush=True)
+    for scenario_idx, s in enumerate(scenarios, start=1):
         label = s["label"]
         bundle = s["bundle"]
+        print(f"    [{scenario_idx}/{len(scenarios)}] {label}", flush=True)
         for base, plot_fn in per_scenario_plots:
             out = _per_scenario_output_path(out_dir, base, label, bundle)
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -1381,8 +1435,10 @@ def write_comparison_plots(
                     rel = out.relative_to(out_dir).as_posix()
                     paths[rel] = out
 
+    print("  Cross-technology charts...", flush=True)
     _write_cross_technology_plots(scenarios, out_dir, paths, lat_title=lat_title)
 
+    print("  Timeseries chart...", flush=True)
     ts = out_dir / "comparison_timeseries_rps_p99.png"
     if plot_comparison_timeseries_rps_p99([(s["label"], s["bundle"]) for s in scenarios], ts):
         paths["comparison_timeseries_rps_p99.png"] = ts

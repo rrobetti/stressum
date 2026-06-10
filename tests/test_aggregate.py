@@ -109,8 +109,10 @@ def test_postgres_process_summary_from_fixture() -> None:
     assert summary is not None
     assert summary["cpu_pct_peak"] == 3.25
     assert abs(summary["cpu_pct_mean"] - 2.25) < 1e-9
+    assert abs(summary["cpu_pct_p95"] - 3.125) < 1e-9
     assert summary["rss_mb_peak"] == 131.0
     assert abs(summary["rss_mb_mean"] - 129.83333333333334) < 1e-9
+    assert abs(summary["rss_mb_p95"] - 130.95) < 1e-9
 
 
 def test_postgres_process_summary_returns_none_without_csv(tmp_path: Path) -> None:
@@ -196,6 +198,10 @@ def test_total_resource_footprint_summary_from_fixture() -> None:
     assert footprint["postgres_cpu_pct_peak"] == 3.25
     assert footprint["proxy_service_cpu_aligned_peak_pct"] == 0.0
     assert abs(footprint["total_cpu_pct"] - 4.45) < 1e-9
+    assert abs(footprint["total_cpu_mean_pct"] - 3.45) < 1e-9
+    assert abs(footprint["total_cpu_p95_pct"] - 4.325) < 1e-9
     assert footprint["postgres_rss_mb_peak"] == 131.0
     assert footprint["proxy_rss_mb_aligned_peak"] == 0.0
     assert footprint["total_rss_mb_peak"] == 131.0
+    assert abs(footprint["total_rss_mb_mean"] - 129.83333333333334) < 1e-9
+    assert abs(footprint["total_rss_mb_p95"] - 130.95) < 1e-9

@@ -50,6 +50,8 @@ def main_compare(argv: list[str] | None = None) -> int:
         return 2
 
     out = comparison_output_dir()
+    print(f"Reading comparison config: {cfg_path}", flush=True)
+    print(f"Output directory: {out}", flush=True)
     apply_paper_style()
 
     code, _meta = run_comparison(cfg_path, out)

@@ -116,8 +116,12 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "postgres_rss_mb_peak" in summary.columns
     assert "bench_cpu_sum_pct" in summary.columns
     assert "total_cpu_pct" in summary.columns
+    assert "total_cpu_mean_pct" in summary.columns
+    assert "total_cpu_p95_pct" in summary.columns
     assert "proxy_rss_mb_aligned_peak" in summary.columns
     assert "total_rss_mb_peak" in summary.columns
+    assert "total_rss_mb_mean" in summary.columns
+    assert "total_rss_mb_p95" in summary.columns
     assert "total_error_rps_sum" in summary.columns
     assert "total_completed_rps_sum" in summary.columns
     assert "open_loop" in summary.columns
@@ -185,9 +189,17 @@ def test_compare_writes_cross_technology_bar_charts(
         "comparison_cross_tech_throughput_postgres_cpu",
         "comparison_cross_tech_throughput_postgres_rss",
         "comparison_cross_tech_total_cpu_peak",
+        "comparison_cross_tech_total_cpu_mean",
+        "comparison_cross_tech_total_cpu_p95",
         "comparison_cross_tech_total_rss_peak",
-        "comparison_cross_tech_throughput_total_cpu",
-        "comparison_cross_tech_throughput_total_rss",
+        "comparison_cross_tech_total_rss_mean",
+        "comparison_cross_tech_total_rss_p95",
+        "comparison_cross_tech_throughput_total_cpu_peak",
+        "comparison_cross_tech_throughput_total_cpu_mean",
+        "comparison_cross_tech_throughput_total_cpu_p95",
+        "comparison_cross_tech_throughput_total_rss_peak",
+        "comparison_cross_tech_throughput_total_rss_mean",
+        "comparison_cross_tech_throughput_total_rss_p95",
     )
     for base in cross_tech_bases:
         assert (out / f"{base}.png").is_file(), f"missing cross-tech chart: {base}"
@@ -196,7 +208,11 @@ def test_compare_writes_cross_technology_bar_charts(
         assert "postgres_cpu_pct_peak" in scenario
         assert "postgres_rss_mb_peak" in scenario
         assert "total_cpu_pct" in scenario
+        assert "total_cpu_mean_pct" in scenario
+        assert "total_cpu_p95_pct" in scenario
         assert "total_rss_mb_peak" in scenario
+        assert "total_rss_mb_mean" in scenario
+        assert "total_rss_mb_p95" in scenario
         assert "bench_cpu_sum_pct" in scenario
 
 

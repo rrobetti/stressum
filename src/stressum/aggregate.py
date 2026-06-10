@@ -314,8 +314,12 @@ def _db_proc_metrics_path(bundle: RunBundle) -> Path | None:
     return None
 
 
+def _series_quantile(ser: pd.Series, q: float) -> float:
+    return float(ser.quantile(q))
+
+
 def postgres_process_summary(bundle: RunBundle) -> dict[str, float] | None:
-    """Peak and mean CPU/RSS for the PostgreSQL server process (db_proc_metrics.csv)."""
+    """Peak, mean, and p95 CPU/RSS for the PostgreSQL server process (db_proc_metrics.csv)."""
     path = _db_proc_metrics_path(bundle)
     if path is None:
         return None
@@ -327,9 +331,9 @@ def postgres_process_summary(bundle: RunBundle) -> dict[str, float] | None:
         return None
 
     out: dict[str, float] = {}
-    for col, peak_key, mean_key in (
-        ("cpu_pct", "cpu_pct_peak", "cpu_pct_mean"),
-        ("rss_mb", "rss_mb_peak", "rss_mb_mean"),
+    for col, peak_key, mean_key, p95_key in (
+        ("cpu_pct", "cpu_pct_peak", "cpu_pct_mean", "cpu_pct_p95"),
+        ("rss_mb", "rss_mb_peak", "rss_mb_mean", "rss_mb_p95"),
     ):
         if col not in df.columns:
             continue
@@ -338,6 +342,7 @@ def postgres_process_summary(bundle: RunBundle) -> dict[str, float] | None:
             continue
         out[peak_key] = float(ser.max())
         out[mean_key] = float(ser.mean())
+        out[p95_key] = _series_quantile(ser, 0.95)
     return out or None
 
 
@@ -357,6 +362,7 @@ def proxy_tier_cpu_summary(bundle: RunBundle) -> dict[str, float] | None:
         "service_cpu_aligned_peak_pct": aligned_peak,
         "service_cpu_legacy_peak_sum_pct": legacy_peak_sum,
         "service_cpu_mean_pct": float(tier_sum.mean()),
+        "service_cpu_aligned_p95_pct": _series_quantile(tier_sum, 0.95),
     }
     if host_aligned_peak is not None:
         out["host_cpu_aligned_peak_pct"] = host_aligned_peak
@@ -404,6 +410,7 @@ def proxy_tier_rss_summary(bundle: RunBundle) -> dict[str, float] | None:
     return {
         "rss_mb_aligned_peak": aligned_peak,
         "rss_mb_mean": float(tier_sum.mean()),
+        "rss_mb_aligned_p95": _series_quantile(tier_sum, 0.95),
     }
 
 
@@ -421,8 +428,9 @@ def total_resource_footprint_summary(bundle: RunBundle) -> dict[str, float]:
     """
     Aggregated resource footprint: bench replicas + PostgreSQL + proxy/LB tier.
 
-    CPU total sums independent peaks (components may peak at different times).
-    Memory total excludes bench/LG RSS (not collected in exported bundles).
+    Peak totals sum independent component peaks (may occur at different times).
+    Mean and p95 totals sum component means / aligned-tier p95 series statistics.
+    Memory totals exclude bench/LG RSS (not collected in exported bundles).
     """
     bench_cpu = bench_jvm_cpu_summary(bundle)["bench_cpu_sum_pct"]
     postgres = postgres_process_summary(bundle) or {}
@@ -430,18 +438,30 @@ def total_resource_footprint_summary(bundle: RunBundle) -> dict[str, float]:
     proxy_rss = proxy_tier_rss_summary(bundle) or {}
 
     postgres_cpu_peak = float(postgres.get("cpu_pct_peak") or 0.0)
+    postgres_cpu_mean = float(postgres.get("cpu_pct_mean") or 0.0)
+    postgres_cpu_p95 = float(postgres.get("cpu_pct_p95") or 0.0)
     proxy_cpu_peak = float(proxy_cpu.get("service_cpu_aligned_peak_pct") or 0.0)
+    proxy_cpu_mean = float(proxy_cpu.get("service_cpu_mean_pct") or 0.0)
+    proxy_cpu_p95 = float(proxy_cpu.get("service_cpu_aligned_p95_pct") or 0.0)
     postgres_rss_peak = float(postgres.get("rss_mb_peak") or 0.0)
+    postgres_rss_mean = float(postgres.get("rss_mb_mean") or 0.0)
+    postgres_rss_p95 = float(postgres.get("rss_mb_p95") or 0.0)
     proxy_rss_peak = float(proxy_rss.get("rss_mb_aligned_peak") or 0.0)
+    proxy_rss_mean = float(proxy_rss.get("rss_mb_mean") or 0.0)
+    proxy_rss_p95 = float(proxy_rss.get("rss_mb_aligned_p95") or 0.0)
 
     return {
         "bench_cpu_sum_pct": bench_cpu,
         "postgres_cpu_pct_peak": postgres_cpu_peak,
         "proxy_service_cpu_aligned_peak_pct": proxy_cpu_peak,
         "total_cpu_pct": bench_cpu + postgres_cpu_peak + proxy_cpu_peak,
+        "total_cpu_mean_pct": bench_cpu + postgres_cpu_mean + proxy_cpu_mean,
+        "total_cpu_p95_pct": bench_cpu + postgres_cpu_p95 + proxy_cpu_p95,
         "postgres_rss_mb_peak": postgres_rss_peak,
         "proxy_rss_mb_aligned_peak": proxy_rss_peak,
         "total_rss_mb_peak": postgres_rss_peak + proxy_rss_peak,
+        "total_rss_mb_mean": postgres_rss_mean + proxy_rss_mean,
+        "total_rss_mb_p95": postgres_rss_p95 + proxy_rss_p95,
     }
 
 

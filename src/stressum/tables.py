@@ -94,12 +94,20 @@ def run_summary_dict(
         row["bench_cpu_sum_pct"] = total_footprint["bench_cpu_sum_pct"]
         row["proxy_rss_mb_aligned_peak"] = total_footprint.get("proxy_rss_mb_aligned_peak", "")
         row["total_cpu_pct"] = total_footprint["total_cpu_pct"]
+        row["total_cpu_mean_pct"] = total_footprint["total_cpu_mean_pct"]
+        row["total_cpu_p95_pct"] = total_footprint["total_cpu_p95_pct"]
         row["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
+        row["total_rss_mb_mean"] = total_footprint["total_rss_mb_mean"]
+        row["total_rss_mb_p95"] = total_footprint["total_rss_mb_p95"]
     else:
         row["bench_cpu_sum_pct"] = ""
         row["proxy_rss_mb_aligned_peak"] = ""
         row["total_cpu_pct"] = ""
+        row["total_cpu_mean_pct"] = ""
+        row["total_cpu_p95_pct"] = ""
         row["total_rss_mb_peak"] = ""
+        row["total_rss_mb_mean"] = ""
+        row["total_rss_mb_p95"] = ""
     return row
 
 
