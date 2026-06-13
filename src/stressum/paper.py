@@ -1,0 +1,955 @@
+from __future__ import annotations
+
+import json
+import math
+import re
+from pathlib import Path
+from typing import Any
+
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from stressum.aggregate import proxy_tier_rss_summary
+from stressum.comparison_plots import _technology_from_label
+from stressum.load import RunBundle, read_node_csv
+
+_T_95_DF4 = 2.776
+_PAPER_TECH_ORDER = ("HikariCP", "OJP", "PgBouncer")
+_PAPER_COLORS = {
+    "HikariCP": "darkorange",
+    "OJP": "steelblue",
+    "PgBouncer": "mediumseagreen",
+}
+_SLO_COLORS = {
+    "pass": "#4daf4a",
+    "fail latency": "#ffb000",
+    "fail error rate": "#377eb8",
+    "fail both": "#e41a1c",
+}
+_ERROR_CATEGORIES = (
+    "SQLTransientException",
+    "SQLTransientConnectionException",
+    "StatusRuntimeException",
+    "SQLException",
+    "timeout",
+    "connection acquisition failure",
+    "admission control failure",
+    "other",
+)
+_SUMMARY_METRICS: dict[str, str] = {
+    "offered_rps": "offered_rps",
+    "attempted_rps": "attempted_rps",
+    "successful_rps": "successful_rps",
+    "error_rps": "error_rps",
+    "error_rate_pct": "error_rate_pct",
+    "p95_latency_ms": "p95_latency_ms",
+    "p99_latency_ms": "p99_latency_ms",
+    "postgres_backend_connections": "postgres_backend_connections",
+    "rps_per_db_connection": "rps_per_db_connection",
+    "postgres_cpu_pct_avg": "postgres_cpu_pct_avg",
+    "postgres_rss_mib": "postgres_rss_mib",
+    "proxy_tier_cpu_pct": "proxy_tier_cpu_pct",
+    "proxy_tier_rss_mib": "proxy_tier_rss_mib",
+}
+
+
+def write_paper_outputs(
+    scenarios: list[dict[str, Any]],
+    out_dir: Path,
+    *,
+    expected_repetitions: int,
+    load_map_path: Path | None,
+    slo_p95_ms: float,
+    slo_error_rate_pct: float,
+) -> tuple[dict[str, Path], list[str]]:
+    load_map = _load_map(load_map_path) if load_map_path is not None else {}
+    repetition_df, warnings = _paper_repetition_dataframe(
+        scenarios,
+        load_map=load_map,
+        expected_repetitions=expected_repetitions,
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    repetition_out = out_dir / "repetition_values.csv"
+    repetition_df.to_csv(repetition_out, index=False)
+
+    summary_df = _summary_stats_dataframe(repetition_df)
+    summary_out = out_dir / "summary_stats.csv"
+    summary_df.to_csv(summary_out, index=False)
+
+    paths: dict[str, Path] = {
+        repetition_out.relative_to(out_dir).as_posix(): repetition_out,
+        summary_out.relative_to(out_dir).as_posix(): summary_out,
+    }
+    scenario_title = _scenario_title(repetition_df)
+
+    for filename, metric, ylabel, title in (
+        (
+            "throughput_vs_load.png",
+            "successful_rps",
+            "Successful throughput (RPS)",
+            f"Successful throughput vs load — {scenario_title}",
+        ),
+        (
+            "error_rate_vs_load.png",
+            "error_rate_pct",
+            "Error rate (%)",
+            f"Error rate vs load — {scenario_title}",
+        ),
+        (
+            "p95_latency_vs_load.png",
+            "p95_latency_ms",
+            "p95 successful latency (ms)",
+            f"p95 successful latency vs load — {scenario_title}",
+        ),
+        (
+            "p99_latency_vs_load.png",
+            "p99_latency_ms",
+            "p99 successful latency (ms)",
+            f"p99 successful latency vs load — {scenario_title}",
+        ),
+        (
+            "postgres_backend_connections_vs_load.png",
+            "postgres_backend_connections",
+            "Observed PostgreSQL backend connections",
+            f"Observed PostgreSQL backend connections vs load — {scenario_title}",
+        ),
+        (
+            "rps_per_db_connection_vs_load.png",
+            "rps_per_db_connection",
+            "Successful RPS per DB connection",
+            f"Successful RPS per DB connection vs load — {scenario_title}",
+        ),
+        (
+            "postgres_cpu_vs_load.png",
+            "postgres_cpu_pct_avg",
+            "PostgreSQL average CPU (%)",
+            f"PostgreSQL average CPU vs load — {scenario_title}",
+        ),
+        (
+            "postgres_rss_vs_load.png",
+            "postgres_rss_mib",
+            "PostgreSQL RSS (MiB)",
+            f"PostgreSQL RSS vs load — {scenario_title}",
+        ),
+        (
+            "proxy_tier_cpu_vs_load.png",
+            "proxy_tier_cpu_pct",
+            "Proxy-tier CPU (%)",
+            f"Proxy-tier CPU vs load — {scenario_title}",
+        ),
+        (
+            "proxy_tier_rss_vs_load.png",
+            "proxy_tier_rss_mib",
+            "Proxy-tier RSS (MiB)",
+            f"Proxy-tier RSS vs load — {scenario_title}",
+        ),
+    ):
+        out = out_dir / filename
+        _plot_metric_line(summary_df, metric, out, ylabel=ylabel, title=title, warnings=warnings)
+        paths[out.relative_to(out_dir).as_posix()] = out
+
+    attempted_out = out_dir / "attempted_completed_success_error_rps.png"
+    _plot_attempted_completed_chart(
+        summary_df,
+        attempted_out,
+        title=f"Offered, attempted, successful, and error RPS vs load — {scenario_title}",
+        warnings=warnings,
+    )
+    paths[attempted_out.relative_to(out_dir).as_posix()] = attempted_out
+
+    for metric, filename, ylabel, title in (
+        (
+            "p95_latency_ms",
+            "p95_latency_boxplot.png",
+            "p95 successful latency (ms)",
+            f"p95 successful latency distribution by load — {scenario_title}",
+        ),
+        (
+            "p99_latency_ms",
+            "p99_latency_boxplot.png",
+            "p99 successful latency (ms)",
+            f"p99 successful latency distribution by load — {scenario_title}",
+        ),
+        (
+            "successful_rps",
+            "throughput_boxplot.png",
+            "Successful throughput (RPS)",
+            f"Successful throughput distribution by load — {scenario_title}",
+        ),
+    ):
+        out = out_dir / filename
+        _plot_metric_boxplot(
+            repetition_df,
+            metric,
+            out,
+            ylabel=ylabel,
+            title=title,
+            warnings=warnings,
+        )
+        paths[out.relative_to(out_dir).as_posix()] = out
+
+    error_breakdown_out = out_dir / "error_type_breakdown.png"
+    _plot_error_type_breakdown(
+        repetition_df,
+        error_breakdown_out,
+        title=f"Error-type breakdown by technology and load — {scenario_title}",
+        warnings=warnings,
+    )
+    paths[error_breakdown_out.relative_to(out_dir).as_posix()] = error_breakdown_out
+
+    slo_out = out_dir / "slo_heatmap.png"
+    _plot_slo_heatmap(
+        summary_df,
+        slo_out,
+        title=f"SLO pass/fail heatmap — {scenario_title}",
+        slo_p95_ms=slo_p95_ms,
+        slo_error_rate_pct=slo_error_rate_pct,
+    )
+    paths[slo_out.relative_to(out_dir).as_posix()] = slo_out
+
+    index_out = out_dir / "paper_graphs_index.md"
+    index_out.write_text(_paper_index_markdown(), encoding="utf-8")
+    paths[index_out.relative_to(out_dir).as_posix()] = index_out
+    return paths, warnings
+
+
+def _load_map(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Load map must be a JSON object: {path}")
+    return data
+
+
+def _paper_repetition_dataframe(
+    scenarios: list[dict[str, Any]],
+    *,
+    load_map: dict[str, Any],
+    expected_repetitions: int,
+) -> tuple[pd.DataFrame, list[str]]:
+    rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    missing_load_labels: list[str] = []
+    for scenario in scenarios:
+        row, warning_messages = _paper_row_for_scenario(scenario, load_map=load_map)
+        warnings.extend(warning_messages)
+        if row is None:
+            missing_load_labels.append(str(scenario["label"]))
+            continue
+        rows.append(row)
+    if missing_load_labels:
+        missing_text = ", ".join(sorted(missing_load_labels))
+        raise ValueError(
+            "Could not infer load metadata for these runs; add targetRps metadata or provide "
+            f"--load-map: {missing_text}"
+        )
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df, warnings
+
+    group_cols = ["scenario", "workload", "technology", "per_node_rps", "aggregate_rps"]
+    df = df.sort_values(group_cols + ["label", "run_dir"]).reset_index(drop=True)
+    df["repetition"] = df.groupby(group_cols).cumcount() + 1
+    counts = df.groupby(group_cols)["label"].transform("size")
+    df["repetition_count"] = counts
+
+    if expected_repetitions > 0:
+        mismatched = (
+            df[group_cols + ["repetition_count"]]
+            .drop_duplicates()
+            .loc[lambda x: x["repetition_count"] != expected_repetitions]
+        )
+        for _, row in mismatched.iterrows():
+            warnings.append(
+                "Expected "
+                f"{expected_repetitions} repetitions for {row['technology']} @ "
+                f"{row['aggregate_rps']:g} RPS, found {int(row['repetition_count'])}"
+            )
+    return df, warnings
+
+
+def _paper_row_for_scenario(
+    scenario: dict[str, Any],
+    *,
+    load_map: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    bundle: RunBundle = scenario["bundle"]
+    agg = scenario["agg"]
+    run_info = bundle.summaries[0].get("runInfo") or {}
+    metadata = bundle.metadata or {}
+    technology = _canonical_technology_name(str(scenario["label"]), run_info.get("sut"))
+    workload = str(run_info.get("workload") or metadata.get("scenario") or "unknown")
+    scenario_name = str(metadata.get("scenario") or workload)
+    load_level = _infer_load_level(
+        label=str(scenario["label"]),
+        run_info=run_info,
+        metadata=metadata,
+        aggregate_attempted_rps=agg.total_attempted_rps,
+        load_map=load_map,
+        bundle=bundle,
+    )
+    if load_level is None:
+        return None, []
+
+    p95_ms, p99_ms = _paper_latency_percentiles(scenario)
+    postgres_process = scenario.get("postgres_process") or {}
+    proxy_cpu = scenario.get("proxy_cpu") or {}
+    proxy_rss = proxy_tier_rss_summary(bundle) or {}
+    pg_backends = _postgres_backend_connections(bundle)
+
+    row: dict[str, Any] = {
+        "label": str(scenario["label"]),
+        "run_dir": bundle.run_dir.name,
+        "scenario": scenario_name,
+        "workload": workload,
+        "technology": technology,
+        "per_node_rps": load_level["per_node_rps"],
+        "aggregate_rps": load_level["aggregate_rps"],
+        "load_source": load_level["source"],
+        "successful_rps": agg.total_successful_rps,
+        "completed_rps": agg.total_completed_rps,
+        "error_rps": agg.total_error_rps,
+        "attempted_rps": agg.total_attempted_rps,
+        "offered_rps": load_level["aggregate_rps"],
+        "error_rate_pct": agg.aggregate_error_rate * 100.0,
+        "p95_latency_ms": p95_ms,
+        "p99_latency_ms": p99_ms,
+        "postgres_backend_connections": pg_backends,
+        "rps_per_db_connection": (
+            agg.total_successful_rps / pg_backends if pg_backends and pg_backends > 0 else math.nan
+        ),
+        "postgres_cpu_pct_avg": _float_or_nan(postgres_process.get("cpu_pct_mean")),
+        "postgres_rss_mib": _float_or_nan(postgres_process.get("rss_mb_mean")),
+        "proxy_tier_cpu_pct": _float_or_zero(proxy_cpu.get("service_cpu_mean_pct"), technology),
+        "proxy_tier_rss_mib": _float_or_zero(proxy_rss.get("rss_mb_mean"), technology),
+        "duration_seconds": _float_or_nan(run_info.get("durationSeconds")),
+    }
+
+    for category in _ERROR_CATEGORIES:
+        row[f"error_count_{_slug_metric(category)}"] = 0.0
+    for error_name, count in agg.errors_by_type.items():
+        category = _error_category(error_name)
+        row[f"error_count_{_slug_metric(category)}"] += float(count)
+    return row, _missing_metric_warnings(row)
+
+
+def _infer_load_level(
+    *,
+    label: str,
+    run_info: dict[str, Any],
+    metadata: dict[str, Any],
+    aggregate_attempted_rps: float,
+    load_map: dict[str, Any],
+    bundle: RunBundle,
+) -> dict[str, float | str] | None:
+    count = _load_generator_count(bundle, run_info, metadata)
+    if label in load_map:
+        return _load_level_from_mapping(load_map[label], count=count)
+
+    target = run_info.get("targetRps")
+    if isinstance(target, (int, float)) and count > 0:
+        target = float(target)
+        diff_as_aggregate = abs(aggregate_attempted_rps - target)
+        diff_as_per_node = abs(aggregate_attempted_rps - (target * count))
+        if diff_as_per_node + 1e-9 < diff_as_aggregate:
+            return {
+                "per_node_rps": target,
+                "aggregate_rps": target * count,
+                "source": "runInfo.targetRps_per_node",
+            }
+        return {
+            "per_node_rps": target / count,
+            "aggregate_rps": target,
+            "source": "runInfo.targetRps_aggregate",
+        }
+    return None
+
+
+def _load_generator_count(
+    bundle: RunBundle,
+    run_info: dict[str, Any],
+    metadata: dict[str, Any],
+) -> int:
+    candidates = (
+        metadata.get("bench_replica_count"),
+        metadata.get("load_generator_count"),
+        run_info.get("totalInstances"),
+        run_info.get("configuredReplicas"),
+        len(bundle.summaries),
+    )
+    for candidate in candidates:
+        if isinstance(candidate, (int, float)) and int(candidate) > 0:
+            return int(candidate)
+    return 1
+
+
+def _load_level_from_mapping(value: Any, *, count: int) -> dict[str, float | str] | None:
+    if isinstance(value, (int, float)):
+        per_node = float(value)
+        return {
+            "per_node_rps": per_node,
+            "aggregate_rps": per_node * count,
+            "source": "load_map_per_node",
+        }
+    if isinstance(value, str):
+        per_node = float(value)
+        return {
+            "per_node_rps": per_node,
+            "aggregate_rps": per_node * count,
+            "source": "load_map_per_node",
+        }
+    if not isinstance(value, dict):
+        return None
+    per_node = value.get("per_node_rps")
+    aggregate = value.get("aggregate_rps")
+    if isinstance(per_node, (int, float)) and isinstance(aggregate, (int, float)):
+        return {
+            "per_node_rps": float(per_node),
+            "aggregate_rps": float(aggregate),
+            "source": "load_map",
+        }
+    if isinstance(per_node, (int, float)):
+        per_node = float(per_node)
+        return {
+            "per_node_rps": per_node,
+            "aggregate_rps": per_node * count,
+            "source": "load_map_per_node",
+        }
+    if isinstance(aggregate, (int, float)):
+        aggregate = float(aggregate)
+        return {
+            "per_node_rps": aggregate / max(count, 1),
+            "aggregate_rps": aggregate,
+            "source": "load_map_aggregate",
+        }
+    return None
+
+
+def _paper_latency_percentiles(scenario: dict[str, Any]) -> tuple[float, float]:
+    merged = scenario.get("merged")
+    agg = scenario["agg"]
+    if merged is not None:
+        return float(merged.p95_ms), float(merged.p99_ms)
+    return float(agg.median_p95_ms or 0.0), float(agg.median_p99_ms or 0.0)
+
+
+def _postgres_backend_connections(bundle: RunBundle) -> float:
+    for key, path in bundle.node_metrics_csvs.items():
+        if not key.endswith("pg_metrics.csv"):
+            continue
+        try:
+            df = read_node_csv(path)
+        except Exception:
+            return math.nan
+        for column in ("numbackends", "active_backends"):
+            if column in df.columns:
+                values = pd.to_numeric(df[column], errors="coerce").dropna()
+                if not values.empty:
+                    return float(values.median())
+        return math.nan
+    return math.nan
+
+
+def _canonical_technology_name(label: str, sut: Any) -> str:
+    raw = _technology_from_label(label).strip()
+    normalized = raw.lower()
+    sut_text = str(sut or "").lower()
+    if "hikari" in normalized or "hikari" in sut_text:
+        return "HikariCP"
+    if "pgbouncer" in normalized or "pgbouncer" in sut_text:
+        return "PgBouncer"
+    if "ojp" in normalized or "ojp" in sut_text:
+        return "OJP"
+    return raw or "unknown"
+
+
+def _ordered_technologies(values: list[str]) -> list[str]:
+    seen = set(values)
+    ordered = [name for name in _PAPER_TECH_ORDER if name in seen]
+    return ordered + [name for name in values if name not in ordered]
+
+
+def _summary_stats_dataframe(repetition_df: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    group_cols = ["scenario", "workload", "technology", "per_node_rps", "aggregate_rps"]
+    for keys, group in repetition_df.groupby(group_cols, sort=False):
+        base = dict(zip(group_cols, keys, strict=True))
+        repetition_count = int(group["repetition"].nunique())
+        for metric_name, column in _SUMMARY_METRICS.items():
+            series = pd.to_numeric(group[column], errors="coerce").dropna()
+            if series.empty:
+                continue
+            values = series.astype(float)
+            mean = float(values.mean())
+            median = float(values.median())
+            min_value = float(values.min())
+            max_value = float(values.max())
+            stddev = float(values.std(ddof=1)) if len(values) > 1 else 0.0
+            margin = _T_95_DF4 * stddev / math.sqrt(len(values)) if len(values) > 1 else 0.0
+            rows.append(
+                {
+                    **base,
+                    "repetition_count": repetition_count,
+                    "metric_name": metric_name,
+                    "mean": mean,
+                    "median": median,
+                    "stddev": stddev,
+                    "min": min_value,
+                    "max": max_value,
+                    "ci95_low": mean - margin,
+                    "ci95_high": mean + margin,
+                }
+            )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.sort_values(
+        ["scenario", "workload", "aggregate_rps", "technology", "metric_name"]
+    ).reset_index(drop=True)
+
+
+def _scenario_title(df: pd.DataFrame) -> str:
+    scenarios = sorted(set(df["scenario"])) if not df.empty else []
+    workloads = sorted(set(df["workload"])) if not df.empty else []
+    if len(scenarios) == 1 and len(workloads) == 1:
+        return f"{scenarios[0]} / {workloads[0]}"
+    if len(scenarios) == 1:
+        return scenarios[0]
+    return "multiple scenarios"
+
+
+def _summary_metric(summary_df: pd.DataFrame, metric_name: str) -> pd.DataFrame:
+    if summary_df.empty:
+        return summary_df
+    return summary_df.loc[summary_df["metric_name"] == metric_name].copy()
+
+
+def _metric_ticks(metric_df: pd.DataFrame) -> tuple[list[float], list[str]]:
+    x_values = sorted(metric_df["aggregate_rps"].dropna().unique().tolist())
+    labels: list[str] = []
+    for x_value in x_values:
+        subset = metric_df.loc[metric_df["aggregate_rps"] == x_value]
+        per_node = float(subset["per_node_rps"].iloc[0])
+        labels.append(f"{per_node:g}/node\n{x_value:g} agg")
+    return x_values, labels
+
+
+def _plot_metric_line(
+    summary_df: pd.DataFrame,
+    metric_name: str,
+    out: Path,
+    *,
+    ylabel: str,
+    title: str,
+    warnings: list[str],
+) -> None:
+    metric_df = _summary_metric(summary_df, metric_name)
+    fig, ax = plt.subplots(figsize=(8.8, 4.3))
+    if metric_df.empty:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    x_values, tick_labels = _metric_ticks(metric_df)
+    technologies = _ordered_technologies(metric_df["technology"].tolist())
+    any_series = False
+    for technology in technologies:
+        tech_df = metric_df.loc[metric_df["technology"] == technology].sort_values(
+            "aggregate_rps"
+        )
+        if tech_df.empty:
+            warnings.append(f"Missing {metric_name} series for {technology}; skipping")
+            continue
+        any_series = True
+        xs = tech_df["aggregate_rps"].to_numpy(dtype=float)
+        ys = tech_df["mean"].to_numpy(dtype=float)
+        ci_low = tech_df["ci95_low"].to_numpy(dtype=float)
+        ci_high = tech_df["ci95_high"].to_numpy(dtype=float)
+        color = _PAPER_COLORS.get(technology, "gray")
+        ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label=technology)
+        ax.fill_between(xs, ci_low, ci_high, color=color, alpha=0.18)
+    if not any_series:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    ax.set_xticks(x_values)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Load (per-node RPS / aggregate RPS)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(loc="best")
+    _save_plot(fig, out)
+
+
+def _plot_attempted_completed_chart(
+    summary_df: pd.DataFrame,
+    out: Path,
+    *,
+    title: str,
+    warnings: list[str],
+) -> None:
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharex=True)
+    specs = (
+        ("offered_rps", "Offered RPS"),
+        ("attempted_rps", "Attempted RPS"),
+        ("successful_rps", "Successful RPS"),
+        ("error_rps", "Error RPS"),
+    )
+    for ax, (metric_name, ylabel) in zip(axes.flat, specs, strict=True):
+        metric_df = _summary_metric(summary_df, metric_name)
+        if metric_df.empty:
+            _render_placeholder(ax, ylabel, "No data available")
+            continue
+        x_values, tick_labels = _metric_ticks(metric_df)
+        for technology in _ordered_technologies(metric_df["technology"].tolist()):
+            tech_df = metric_df.loc[metric_df["technology"] == technology].sort_values(
+                "aggregate_rps"
+            )
+            if tech_df.empty:
+                warnings.append(f"Missing {metric_name} series for {technology}; skipping")
+                continue
+            xs = tech_df["aggregate_rps"].to_numpy(dtype=float)
+            ys = tech_df["mean"].to_numpy(dtype=float)
+            color = _PAPER_COLORS.get(technology, "gray")
+            ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label=technology)
+            if metric_name != "offered_rps":
+                ax.fill_between(
+                    xs,
+                    tech_df["ci95_low"].to_numpy(dtype=float),
+                    tech_df["ci95_high"].to_numpy(dtype=float),
+                    color=color,
+                    alpha=0.18,
+                )
+        ax.set_ylabel(ylabel)
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(tick_labels)
+        ax.grid(True, alpha=0.25)
+    axes[0, 0].legend(loc="best")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def _plot_metric_boxplot(
+    repetition_df: pd.DataFrame,
+    metric_name: str,
+    out: Path,
+    *,
+    ylabel: str,
+    title: str,
+    warnings: list[str],
+) -> None:
+    fig, ax = plt.subplots(figsize=(10.5, 4.8))
+    groups = _boxplot_groups(repetition_df, metric_name)
+    if not groups:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    positions: list[float] = []
+    values: list[list[float]] = []
+    colors: list[str] = []
+    labels: list[str] = []
+    for position, group in enumerate(groups, start=1):
+        positions.append(float(position))
+        values.append(group["values"])
+        colors.append(_PAPER_COLORS.get(group["technology"], "gray"))
+        labels.append(group["label"])
+    box = ax.boxplot(values, positions=positions, widths=0.6, patch_artist=True, showfliers=False)
+    for patch, color in zip(box["boxes"], colors, strict=True):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.35)
+    for position, group, color in zip(positions, groups, colors, strict=True):
+        jitter = np.linspace(-0.12, 0.12, max(len(group["values"]), 1))
+        ax.scatter(
+            position + jitter[: len(group["values"])],
+            group["values"],
+            color=color,
+            s=18,
+            zorder=3,
+        )
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    legend_handles = [
+        mpatches.Patch(color=_PAPER_COLORS[name], label=name, alpha=0.35)
+        for name in _ordered_technologies([group["technology"] for group in groups])
+    ]
+    ax.legend(handles=legend_handles, loc="best")
+    _save_plot(fig, out)
+
+
+def _boxplot_groups(repetition_df: pd.DataFrame, metric_name: str) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    techs = (
+        _ordered_technologies(repetition_df["technology"].tolist())
+        if not repetition_df.empty
+        else []
+    )
+    load_pairs = (
+        repetition_df[["per_node_rps", "aggregate_rps"]]
+        .drop_duplicates()
+        .sort_values(["aggregate_rps", "per_node_rps"])
+        .itertuples(index=False)
+    )
+    for per_node_rps, aggregate_rps in load_pairs:
+        for technology in techs:
+            subset = repetition_df.loc[
+                (repetition_df["technology"] == technology)
+                & (repetition_df["aggregate_rps"] == aggregate_rps)
+                & (repetition_df["per_node_rps"] == per_node_rps),
+                metric_name,
+            ]
+            values = pd.to_numeric(subset, errors="coerce").dropna().tolist()
+            if not values:
+                continue
+            groups.append(
+                {
+                    "technology": technology,
+                    "label": f"{technology}\n{per_node_rps:g}/node\n{aggregate_rps:g} agg",
+                    "values": values,
+                }
+            )
+    return groups
+
+
+def _plot_error_type_breakdown(
+    repetition_df: pd.DataFrame,
+    out: Path,
+    *,
+    title: str,
+    warnings: list[str],
+) -> None:
+    fig, ax = plt.subplots(figsize=(12, 5))
+    if repetition_df.empty:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    group_cols = ["technology", "per_node_rps", "aggregate_rps"]
+    category_columns = [f"error_count_{_slug_metric(category)}" for category in _ERROR_CATEGORIES]
+    grouped = repetition_df.groupby(group_cols, sort=False)[category_columns].mean().reset_index()
+    if grouped.empty:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    positions = np.arange(len(grouped))
+    bottoms = np.zeros(len(grouped))
+    color_map = plt.get_cmap("tab20")
+    for index, category in enumerate(_ERROR_CATEGORIES):
+        column = f"error_count_{_slug_metric(category)}"
+        values = grouped[column].to_numpy(dtype=float)
+        ax.bar(positions, values, bottom=bottoms, color=color_map(index), label=category)
+        bottoms += values
+    labels = [
+        f"{row.technology}\n{row.per_node_rps:g}/node\n{row.aggregate_rps:g} agg"
+        for row in grouped.itertuples(index=False)
+    ]
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_ylabel("Mean failed requests per repetition")
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=8)
+    _save_plot(fig, out)
+
+
+def _plot_slo_heatmap(
+    summary_df: pd.DataFrame,
+    out: Path,
+    *,
+    title: str,
+    slo_p95_ms: float,
+    slo_error_rate_pct: float,
+) -> None:
+    fig, ax = plt.subplots(figsize=(9.5, 3.5))
+    p95_df = _summary_metric(summary_df, "p95_latency_ms")
+    err_df = _summary_metric(summary_df, "error_rate_pct")
+    if p95_df.empty or err_df.empty:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    merged = p95_df.merge(
+        err_df[
+            [
+                "technology",
+                "per_node_rps",
+                "aggregate_rps",
+                "mean",
+            ]
+        ].rename(columns={"mean": "error_rate_pct_mean"}),
+        on=["technology", "per_node_rps", "aggregate_rps"],
+        how="left",
+    )
+    techs = _ordered_technologies(merged["technology"].tolist())
+    loads = (
+        merged[["per_node_rps", "aggregate_rps"]]
+        .drop_duplicates()
+        .sort_values(["aggregate_rps", "per_node_rps"])
+        .itertuples(index=False)
+    )
+    load_list = list(loads)
+    for row_index, technology in enumerate(techs):
+        for col_index, load in enumerate(load_list):
+            subset = merged.loc[
+                (merged["technology"] == technology)
+                & (merged["per_node_rps"] == load.per_node_rps)
+                & (merged["aggregate_rps"] == load.aggregate_rps)
+            ]
+            category = "pass"
+            if not subset.empty:
+                latency_fail = float(subset["mean"].iloc[0]) > slo_p95_ms
+                error_fail = float(subset["error_rate_pct_mean"].iloc[0]) > slo_error_rate_pct
+                if latency_fail and error_fail:
+                    category = "fail both"
+                elif latency_fail:
+                    category = "fail latency"
+                elif error_fail:
+                    category = "fail error rate"
+            rect = mpatches.Rectangle(
+                (col_index, row_index),
+                1,
+                1,
+                facecolor=_SLO_COLORS[category],
+                edgecolor="white",
+            )
+            ax.add_patch(rect)
+            ax.text(
+                col_index + 0.5,
+                row_index + 0.5,
+                category,
+                ha="center",
+                va="center",
+                fontsize=8,
+            )
+    ax.set_xlim(0, max(len(load_list), 1))
+    ax.set_ylim(0, max(len(techs), 1))
+    ax.invert_yaxis()
+    ax.set_xticks(np.arange(len(load_list)) + 0.5)
+    ax.set_xticklabels(
+        [f"{load.per_node_rps:g}/node\n{load.aggregate_rps:g} agg" for load in load_list]
+    )
+    ax.set_yticks(np.arange(len(techs)) + 0.5)
+    ax.set_yticklabels(techs)
+    ax.set_title(title)
+    legend_handles = [
+        mpatches.Patch(color=color, label=label) for label, color in _SLO_COLORS.items()
+    ]
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=8)
+    _save_plot(fig, out)
+
+
+def _paper_index_markdown() -> str:
+    return "\n".join(
+        [
+            "# Paper graphs index",
+            "",
+            (
+                "- `summary_stats.csv`: grouped summary by scenario, workload, technology, "
+                "per_node_rps, aggregate_rps, and metric_name."
+            ),
+            (
+                "- `repetition_values.csv`: one row per repetition/run with raw values used "
+                "for paper graphs."
+            ),
+            "- `throughput_vs_load.png`: `successful_rps` from `summary_stats.csv`.",
+            (
+                "- `attempted_completed_success_error_rps.png`: `offered_rps`, "
+                "`attempted_rps`, `successful_rps`, and `error_rps` from "
+                "`summary_stats.csv`."
+            ),
+            "- `error_rate_vs_load.png`: `error_rate_pct` from `summary_stats.csv`.",
+            "- `p95_latency_vs_load.png`: `p95_latency_ms` from `summary_stats.csv`.",
+            "- `p99_latency_vs_load.png`: `p99_latency_ms` from `summary_stats.csv`.",
+            "- `p95_latency_boxplot.png`: `p95_latency_ms` from `repetition_values.csv`.",
+            "- `p99_latency_boxplot.png`: `p99_latency_ms` from `repetition_values.csv`.",
+            "- `throughput_boxplot.png`: `successful_rps` from `repetition_values.csv`.",
+            (
+                "- `postgres_backend_connections_vs_load.png`: "
+                "`postgres_backend_connections` from `summary_stats.csv`."
+            ),
+            (
+                "- `rps_per_db_connection_vs_load.png`: `rps_per_db_connection` from "
+                "`summary_stats.csv`."
+            ),
+            "- `postgres_cpu_vs_load.png`: `postgres_cpu_pct_avg` from `summary_stats.csv`.",
+            "- `postgres_rss_vs_load.png`: `postgres_rss_mib` from `summary_stats.csv`.",
+            "- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from `summary_stats.csv`.",
+            "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.",
+            (
+                "- `error_type_breakdown.png`: `error_count_*` columns from "
+                "`repetition_values.csv` grouped by technology and load."
+            ),
+            (
+                "- `slo_heatmap.png`: `p95_latency_ms` and `error_rate_pct` from "
+                "`summary_stats.csv` compared against CLI SLO thresholds."
+            ),
+            "",
+        ]
+    )
+
+
+def _missing_metric_warnings(row: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    for metric_name in (
+        "postgres_backend_connections",
+        "rps_per_db_connection",
+        "postgres_cpu_pct_avg",
+        "postgres_rss_mib",
+    ):
+        value = row.get(metric_name)
+        if isinstance(value, float) and math.isnan(value):
+            warnings.append(
+                f"Missing {metric_name} for {row['label']}; affected paper series will be skipped"
+            )
+    return warnings
+
+
+def _render_placeholder(ax: Any, title: str, text: str) -> None:
+    ax.set_title(title)
+    ax.text(0.5, 0.5, text, ha="center", va="center", transform=ax.transAxes)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.grid(False)
+
+
+def _save_plot(fig: Any, out: Path) -> None:
+    fig.tight_layout()
+    fig.savefig(out, format="png")
+    plt.close(fig)
+
+
+def _error_category(error_name: str) -> str:
+    normalized = error_name.lower()
+    if error_name == "SQLTransientConnectionException":
+        return error_name
+    if error_name == "SQLTransientException":
+        return error_name
+    if error_name == "StatusRuntimeException":
+        return error_name
+    if error_name == "SQLException":
+        return error_name
+    if "timeout" in normalized:
+        return "timeout"
+    if "acquisition" in normalized or "connection is not available" in normalized:
+        return "connection acquisition failure"
+    if "admission" in normalized:
+        return "admission control failure"
+    return "other"
+
+
+def _slug_metric(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def _float_or_nan(value: Any) -> float:
+    return float(value) if isinstance(value, (int, float)) else math.nan
+
+
+def _float_or_zero(value: Any, technology: str) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if technology == "HikariCP":
+        return 0.0
+    return math.nan

@@ -27,11 +27,22 @@ Create **`stressum-comparison.json`** at the repository root (or in the current 
 uv run stressum
 ```
 
+Paper-focused output can be generated explicitly:
+
+```bash
+uv run stressum --paper
+uv run stressum --appendix
+uv run stressum --all --repetitions 5 --slo-p95-ms 50 --slo-error-rate 1
+```
+
 Output is written to `<project-root>/output/comparison-<YYYY-MM-dd-HHMMSS-microseconds>/` (or `./output/...` from the current working directory when the checkout root cannot be detected) and includes:
 
 - `comparison_metadata.json` — scenarios, paths, HDR merge status, fairness warnings when `workload` / `loadMode` / `targetRps` differ across runs
 - `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist, proxy-tier CPU, PostgreSQL process CPU/RSS when node metrics exist, **total resource footprint** columns — see [Total resource footprint](#total-resource-footprint-cross-technology))
-- PNG figures — see [Generated figures](#generated-figures) below
+- `paper/summary_stats.csv` — grouped summary statistics for paper-ready figures
+- `paper/repetition_values.csv` — per-repetition values retained for machine-readable analysis
+- `paper/*.png` — paper-ready figures grouped by load level and technology
+- `appendix/*.png` — existing detailed/debug figures grouped by run label
 
 Plot styling uses a fixed NumPy RNG seed for reproducible figures.
 

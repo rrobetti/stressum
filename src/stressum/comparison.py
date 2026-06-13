@@ -19,6 +19,7 @@ from stressum.aggregate import (
 from stressum.comparison_plots import write_comparison_plots
 from stressum.hdr_merge import merge_run_histogram
 from stressum.load import RunBundle, load_run_bundle
+from stressum.paper import write_paper_outputs
 from stressum.tables import run_summary_dict
 
 
@@ -88,6 +89,13 @@ def _fairness_warnings(scenarios: list[dict[str, Any]]) -> list[str]:
 def run_comparison(
     config_path: Path,
     out_dir: Path,
+    *,
+    generate_paper: bool = True,
+    generate_appendix: bool = True,
+    expected_repetitions: int = 5,
+    load_map_path: Path | None = None,
+    slo_p95_ms: float = 50.0,
+    slo_error_rate_pct: float = 1.0,
 ) -> tuple[int, dict[str, Any]]:
     """
     Execute multi-run comparison. Returns (exit_code, metadata_dict).
@@ -247,15 +255,40 @@ def run_comparison(
                 "proxy_cpu": proxy_cpu,
                 "postgres_process": postgres_process,
                 "total_footprint": total_footprint,
+                "run_metadata": meta,
             }
         )
 
     global_warnings = _fairness_warnings(scenarios_plot)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    print("Generating comparison plots...", flush=True)
-    plot_paths = write_comparison_plots(scenarios_plot, out_dir)
-    print(f"  Generated {len(plot_paths)} chart(s)", flush=True)
+    plot_paths: dict[str, Path] = {}
+    paper_warnings: list[str] = []
+    if generate_appendix:
+        appendix_dir = out_dir / "appendix"
+        print("Generating appendix/debug plots...", flush=True)
+        appendix_paths = write_comparison_plots(scenarios_plot, appendix_dir)
+        plot_paths.update(
+            {f"appendix/{rel_path}": path for rel_path, path in appendix_paths.items()}
+        )
+        print(f"  Generated {len(appendix_paths)} appendix/debug chart(s)", flush=True)
+    if generate_paper:
+        paper_dir = out_dir / "paper"
+        print("Generating paper plots and summary tables...", flush=True)
+        try:
+            paper_paths, paper_warnings = write_paper_outputs(
+                scenarios_plot,
+                paper_dir,
+                expected_repetitions=expected_repetitions,
+                load_map_path=load_map_path,
+                slo_p95_ms=slo_p95_ms,
+                slo_error_rate_pct=slo_error_rate_pct,
+            )
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 2, {}
+        plot_paths.update({f"paper/{rel_path}": path for rel_path, path in paper_paths.items()})
+        print(f"  Generated {len(paper_paths)} paper artifact(s)", flush=True)
 
     try:
         stressum_ver = version("stressum")
@@ -274,6 +307,7 @@ def run_comparison(
         "config_path": str(config_path.resolve()),
         "output_dir": str(out_dir.resolve()),
         "global_warnings": global_warnings,
+        "paper_warnings": paper_warnings,
         "scenarios": scenarios_payload,
         "artifacts": artifacts,
     }
