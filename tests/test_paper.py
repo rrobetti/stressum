@@ -4,13 +4,19 @@ import json
 import shutil
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
 from stressum.aggregate import aggregate_bundle, postgres_process_summary, proxy_tier_cpu_summary
 from stressum.cli import main
 from stressum.load import load_run_bundle
-from stressum.paper import _paper_color, _paper_repetition_dataframe, _summary_stats_dataframe
+from stressum.paper import (
+    _paper_color,
+    _paper_repetition_dataframe,
+    _plot_metric_line,
+    _summary_stats_dataframe,
+)
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "minimal-run"
 
@@ -313,3 +319,60 @@ def test_compare_handles_missing_metrics_safely(
 
 def test_paper_color_uses_central_ojp_blue() -> None:
     assert _paper_color("OJP") == "steelblue"
+
+
+def test_proxy_tier_report_plots_skip_hikaricp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+
+    def capture_plot(fig: object, out: Path) -> None:
+        captured["fig"] = fig
+
+    monkeypatch.setattr("stressum.paper._save_plot", capture_plot)
+    summary_df = pd.DataFrame(
+        [
+            {
+                "technology": "HikariCP",
+                "metric_name": "proxy_tier_cpu_pct",
+                "aggregate_rps": 100.0,
+                "per_node_rps": 50.0,
+                "mean": 0.0,
+                "ci95_low": 0.0,
+                "ci95_high": 0.0,
+            },
+            {
+                "technology": "OJP",
+                "metric_name": "proxy_tier_cpu_pct",
+                "aggregate_rps": 100.0,
+                "per_node_rps": 50.0,
+                "mean": 12.0,
+                "ci95_low": 11.0,
+                "ci95_high": 13.0,
+            },
+            {
+                "technology": "PgBouncer",
+                "metric_name": "proxy_tier_cpu_pct",
+                "aggregate_rps": 100.0,
+                "per_node_rps": 50.0,
+                "mean": 8.0,
+                "ci95_low": 7.0,
+                "ci95_high": 9.0,
+            },
+        ]
+    )
+
+    _plot_metric_line(
+        summary_df,
+        "proxy_tier_cpu_pct",
+        tmp_path / "proxy_tier_cpu_vs_load.png",
+        ylabel="Proxy-tier CPU (%)",
+        title="Proxy-tier CPU vs load",
+        warnings=[],
+        technologies=("OJP", "PgBouncer"),
+    )
+
+    fig = captured["fig"]
+    labels = fig.axes[0].get_legend_handles_labels()[1]
+    assert labels == ["OJP", "PgBouncer"]
+    plt.close(fig)

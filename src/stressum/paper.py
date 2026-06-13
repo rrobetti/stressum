@@ -22,6 +22,7 @@ _PAPER_COLORS = {
     "OJP": "steelblue",
     "PgBouncer": "mediumseagreen",
 }
+_PROXY_TIER_TECH_ORDER = ("OJP", "PgBouncer")
 _SLO_COLORS = {
     "pass": "#4daf4a",
     "fail latency": "#ffb000",
@@ -152,7 +153,15 @@ def write_paper_outputs(
         ),
     ):
         out = out_dir / filename
-        _plot_metric_line(summary_df, metric, out, ylabel=ylabel, title=title, warnings=warnings)
+        _plot_metric_line(
+            summary_df,
+            metric,
+            out,
+            ylabel=ylabel,
+            title=title,
+            warnings=warnings,
+            technologies=_PROXY_TIER_TECH_ORDER if metric.startswith("proxy_tier_") else None,
+        )
         paths[out.relative_to(out_dir).as_posix()] = out
 
     attempted_out = out_dir / "attempted_completed_success_error_rps.png"
@@ -658,17 +667,24 @@ def _plot_metric_line(
     ylabel: str,
     title: str,
     warnings: list[str],
+    technologies: tuple[str, ...] | None = None,
 ) -> None:
     metric_df = _summary_metric(summary_df, metric_name)
+    if technologies is not None:
+        metric_df = metric_df.loc[metric_df["technology"].isin(technologies)].copy()
     fig, ax = plt.subplots(figsize=(8.8, 4.3))
     if metric_df.empty:
         _render_placeholder(ax, title, "No data available")
         _save_plot(fig, out)
         return
     x_values, tick_labels = _metric_ticks(metric_df)
-    technologies = _ordered_technologies(metric_df["technology"].tolist())
+    ordered_technologies = (
+        [technology for technology in technologies if technology in set(metric_df["technology"])]
+        if technologies is not None
+        else _ordered_technologies(metric_df["technology"].tolist())
+    )
     any_series = False
-    for technology in technologies:
+    for technology in ordered_technologies:
         tech_df = metric_df.loc[metric_df["technology"] == technology].sort_values(
             "aggregate_rps"
         )
