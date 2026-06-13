@@ -210,7 +210,7 @@ def write_paper_outputs(
     )
     paths[slo_out.relative_to(out_dir).as_posix()] = slo_out
 
-    index_out = out_dir / "paper_graphs_index.md"
+    index_out = out_dir / "main_graphs_index.md"
     index_out.write_text(_paper_index_markdown(), encoding="utf-8")
     paths[index_out.relative_to(out_dir).as_posix()] = index_out
     return paths, warnings
@@ -843,7 +843,7 @@ def _plot_slo_heatmap(
 def _paper_index_markdown() -> str:
     return "\n".join(
         [
-            "# Paper graphs index",
+            "# Main figures index",
             "",
             (
                 "- `summary_stats.csv`: grouped summary by scenario, workload, technology, "
@@ -851,7 +851,7 @@ def _paper_index_markdown() -> str:
             ),
             (
                 "- `repetition_values.csv`: one row per repetition/run with raw values used "
-                "for paper graphs."
+                "for main figures."
             ),
             "- `throughput_vs_load.png`: `successful_rps` from `summary_stats.csv`.",
             (
@@ -901,7 +901,8 @@ def _missing_metric_warnings(row: dict[str, Any]) -> list[str]:
         value = row.get(metric_name)
         if isinstance(value, float) and math.isnan(value):
             warnings.append(
-                f"Missing {metric_name} for {row['label']}; affected paper series will be skipped"
+                "Missing "
+                f"{metric_name} for {row['label']}; affected main-figure series will be skipped"
             )
     return warnings
 

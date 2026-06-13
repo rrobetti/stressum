@@ -263,20 +263,18 @@ def run_comparison(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     plot_paths: dict[str, Path] = {}
-    paper_warnings: list[str] = []
+    report_warnings: list[str] = []
     if generate_appendix:
-        appendix_dir = out_dir / "appendix"
-        print("Generating appendix/debug plots...", flush=True)
+        appendix_dir = out_dir / "debug"
+        print("Generating debug/appendix plots...", flush=True)
         appendix_paths = write_comparison_plots(scenarios_plot, appendix_dir)
-        plot_paths.update(
-            {f"appendix/{rel_path}": path for rel_path, path in appendix_paths.items()}
-        )
-        print(f"  Generated {len(appendix_paths)} appendix/debug chart(s)", flush=True)
+        plot_paths.update({f"debug/{rel_path}": path for rel_path, path in appendix_paths.items()})
+        print(f"  Generated {len(appendix_paths)} debug artifact(s)", flush=True)
     if generate_paper:
-        paper_dir = out_dir / "paper"
-        print("Generating paper plots and summary tables...", flush=True)
+        paper_dir = out_dir / "report"
+        print("Generating report outputs for main figures...", flush=True)
         try:
-            paper_paths, paper_warnings = write_paper_outputs(
+            paper_paths, report_warnings = write_paper_outputs(
                 scenarios_plot,
                 paper_dir,
                 expected_repetitions=expected_repetitions,
@@ -287,8 +285,8 @@ def run_comparison(
         except ValueError as e:
             print(e, file=sys.stderr)
             return 2, {}
-        plot_paths.update({f"paper/{rel_path}": path for rel_path, path in paper_paths.items()})
-        print(f"  Generated {len(paper_paths)} paper artifact(s)", flush=True)
+        plot_paths.update({f"report/{rel_path}": path for rel_path, path in paper_paths.items()})
+        print(f"  Generated {len(paper_paths)} report artifact(s)", flush=True)
 
     try:
         stressum_ver = version("stressum")
@@ -307,7 +305,7 @@ def run_comparison(
         "config_path": str(config_path.resolve()),
         "output_dir": str(out_dir.resolve()),
         "global_warnings": global_warnings,
-        "paper_warnings": paper_warnings,
+        "report_warnings": report_warnings,
         "scenarios": scenarios_payload,
         "artifacts": artifacts,
     }

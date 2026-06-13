@@ -88,8 +88,8 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert meta["scenarios"][0]["latency_percentiles_source"] == "summary_json_median"
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
-    assert (out / "paper" / "summary_stats.csv").is_file()
-    assert (out / "paper" / "paper_graphs_index.md").is_file()
+    assert (out / "report" / "summary_stats.csv").is_file()
+    assert (out / "report" / "main_graphs_index.md").is_file()
     bar_bases = (
         "comparison_total_throughput",
         "comparison_total_completed_rps",
@@ -103,10 +103,10 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     )
     for base in bar_bases:
         assert (
-            out / "appendix" / base / f"{base}__cmp-a.png"
+            out / "debug" / base / f"{base}__cmp-a.png"
         ).is_file(), f"missing per-technology bar chart for cmp-a: {base}"
         assert (
-            out / "appendix" / base / f"{base}__B.png"
+            out / "debug" / base / f"{base}__B.png"
         ).is_file(), f"missing per-technology bar chart for B: {base}"
         legacy = out / f"{base}.png"
         assert not legacy.exists(), f"legacy monolithic bar chart still exists: {base}"
@@ -129,32 +129,32 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "open_loop" in summary.columns
     assert summary["open_loop"].all()
     assert (
-        out / "appendix" / "comparison_pg_numbackends" / "comparison_pg_numbackends__cmp-a.png"
+        out / "debug" / "comparison_pg_numbackends" / "comparison_pg_numbackends__cmp-a.png"
     ).is_file()
     assert (
-        out / "appendix" / "comparison_pg_numbackends" / "comparison_pg_numbackends__B.png"
+        out / "debug" / "comparison_pg_numbackends" / "comparison_pg_numbackends__B.png"
     ).is_file()
     assert (
         out
-        / "appendix"
+        / "debug"
         / "comparison_postgres_process_cpu"
         / "comparison_postgres_process_cpu__cmp-a.png"
     ).is_file()
     assert (
         out
-        / "appendix"
+        / "debug"
         / "comparison_postgres_process_cpu"
         / "comparison_postgres_process_cpu__B.png"
     ).is_file()
     assert (
         out
-        / "appendix"
+        / "debug"
         / "comparison_postgres_process_rss"
         / "comparison_postgres_process_rss__cmp-a.png"
     ).is_file()
     assert (
         out
-        / "appendix"
+        / "debug"
         / "comparison_postgres_process_rss"
         / "comparison_postgres_process_rss__B.png"
     ).is_file()
@@ -220,7 +220,7 @@ def test_compare_writes_cross_technology_bar_charts(
         "comparison_cross_tech_throughput_total_rss_p95",
     )
     for base in cross_tech_bases:
-        assert (out / "appendix" / f"{base}.png").is_file(), f"missing cross-tech chart: {base}"
+        assert (out / "debug" / f"{base}.png").is_file(), f"missing cross-tech chart: {base}"
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     for scenario in meta["scenarios"]:
         assert "postgres_cpu_pct_peak" in scenario
@@ -316,15 +316,15 @@ def test_compare_proxy_host_cpu_charts(tmp_path: Path, monkeypatch: pytest.Monke
     assert summary["proxy_host_cpu_aligned_peak_pct"].tolist() == [40.0, 40.0]
     host_cpu_base = "comparison_proxy_host_cpu_aligned_peak"
     assert (
-        out / "appendix" / host_cpu_base / f"{host_cpu_base}__proxy-a.png"
+        out / "debug" / host_cpu_base / f"{host_cpu_base}__proxy-a.png"
     ).is_file()
     assert (
-        out / "appendix" / host_cpu_base / f"{host_cpu_base}__proxy-b.png"
+        out / "debug" / host_cpu_base / f"{host_cpu_base}__proxy-b.png"
     ).is_file()
     assert not (out / f"{host_cpu_base}.png").exists()
 
 
-def test_compare_paper_only_writes_paper_folder(
+def test_compare_report_only_writes_report_folder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -342,8 +342,8 @@ def test_compare_paper_only_writes_paper_folder(
         ),
         encoding="utf-8",
     )
-    assert main(["--paper"]) == 0
+    assert main(["--report"]) == 0
     out = _latest_comparison_out(tmp_path)
-    assert (out / "paper" / "summary_stats.csv").is_file()
-    assert (out / "paper" / "throughput_vs_load.png").is_file()
-    assert not (out / "appendix").exists()
+    assert (out / "report" / "summary_stats.csv").is_file()
+    assert (out / "report" / "throughput_vs_load.png").is_file()
+    assert not (out / "debug").exists()

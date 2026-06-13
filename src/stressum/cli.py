@@ -43,19 +43,33 @@ def main_compare(argv: list[str] | None = None) -> int:
     )
     output_mode = parser.add_mutually_exclusive_group()
     output_mode.add_argument(
-        "--paper",
+        "--report",
+        dest="report",
         action="store_true",
-        help="Generate only paper-ready outputs under paper/.",
+        help="Generate only report outputs for main figures under report/.",
+    )
+    output_mode.add_argument(
+        "--paper",
+        dest="report",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    output_mode.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        help="Generate only debug outputs for appendix figures under debug/.",
     )
     output_mode.add_argument(
         "--appendix",
+        dest="debug",
         action="store_true",
-        help="Generate only appendix/debug outputs under appendix/.",
+        help=argparse.SUPPRESS,
     )
     output_mode.add_argument(
         "--all",
         action="store_true",
-        help="Generate both paper and appendix/debug outputs (default).",
+        help="Generate both report and debug outputs (default).",
     )
     parser.add_argument(
         "--repetitions",
@@ -72,13 +86,13 @@ def main_compare(argv: list[str] | None = None) -> int:
         "--slo-p95-ms",
         type=float,
         default=50.0,
-        help="p95 latency SLO threshold in milliseconds for the paper heatmap.",
+        help="p95 latency SLO threshold in milliseconds for the main-figure heatmap.",
     )
     parser.add_argument(
         "--slo-error-rate",
         type=float,
         default=1.0,
-        help="Error-rate SLO threshold in percent for the paper heatmap.",
+        help="Error-rate SLO threshold in percent for the main-figure heatmap.",
     )
     args = parser.parse_args(argv)
 
@@ -99,8 +113,8 @@ def main_compare(argv: list[str] | None = None) -> int:
     print(f"Output directory: {out}", flush=True)
     apply_paper_style()
 
-    generate_paper = args.paper or not args.appendix
-    generate_appendix = args.appendix or args.all or not args.paper
+    generate_paper = args.report or not args.debug
+    generate_appendix = args.debug or args.all or not args.report
 
     code, _meta = run_comparison(
         cfg_path,

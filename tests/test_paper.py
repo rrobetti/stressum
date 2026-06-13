@@ -84,7 +84,7 @@ def test_paper_detects_missing_load_metadata(tmp_path: Path) -> None:
         _paper_repetition_dataframe([scenario], load_map={}, expected_repetitions=5)
 
 
-def test_compare_generates_paper_and_appendix_outputs(
+def test_compare_generates_report_and_debug_outputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -116,14 +116,14 @@ def test_compare_generates_paper_and_appendix_outputs(
 
     assert main(["--all", "--repetitions", "5"]) == 0
     out = _latest_comparison_out(tmp_path)
-    paper = out / "paper"
-    appendix = out / "appendix"
-    assert (paper / "summary_stats.csv").is_file()
-    assert (paper / "repetition_values.csv").is_file()
-    assert (paper / "throughput_vs_load.png").is_file()
-    assert (paper / "slo_heatmap.png").is_file()
-    assert (appendix / "comparison_cross_tech_total_throughput.png").is_file()
-    summary_df = pd.read_csv(paper / "summary_stats.csv")
+    report = out / "report"
+    debug = out / "debug"
+    assert (report / "summary_stats.csv").is_file()
+    assert (report / "repetition_values.csv").is_file()
+    assert (report / "throughput_vs_load.png").is_file()
+    assert (report / "slo_heatmap.png").is_file()
+    assert (debug / "comparison_cross_tech_total_throughput.png").is_file()
+    summary_df = pd.read_csv(report / "summary_stats.csv")
     assert {
         "scenario",
         "technology",
@@ -168,7 +168,7 @@ def test_compare_handles_missing_metrics_safely(
         ),
         encoding="utf-8",
     )
-    assert main(["--paper"]) == 0
+    assert main(["--report"]) == 0
     out = _latest_comparison_out(tmp_path)
-    assert (out / "paper" / "postgres_backend_connections_vs_load.png").is_file()
-    assert (out / "paper" / "postgres_cpu_vs_load.png").is_file()
+    assert (out / "report" / "postgres_backend_connections_vs_load.png").is_file()
+    assert (out / "report" / "postgres_cpu_vs_load.png").is_file()
