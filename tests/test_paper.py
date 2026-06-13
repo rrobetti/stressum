@@ -253,12 +253,13 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
     report = out / "report"
     debug = out / "debug"
     for name in (
-        "ojp_heap_used_vs_load.png",
-        "ojp_heap_committed_vs_load.png",
-        "ojp_heap_used_committed_max_vs_load.png",
+        "ojp_heap_used_committed_vs_load.png",
         "ojp_heap_utilisation_vs_load.png",
     ):
         assert (report / name).is_file()
+    assert not (report / "ojp_heap_used_vs_load.png").exists()
+    assert not (report / "ojp_heap_committed_vs_load.png").exists()
+    assert not (report / "ojp_heap_used_committed_max_vs_load.png").exists()
     assert (debug / "ojp_heap_per_node_boxplot.png").is_file()
     rationale = (report / "GRAPH_RATIONALE.md").read_text(encoding="utf-8")
     assert (

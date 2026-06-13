@@ -216,18 +216,6 @@ def write_paper_outputs(
 
     for filename, metric, ylabel, title in (
         (
-            "ojp_heap_used_vs_load.png",
-            "ojp_heap_used_mib",
-            "Aggregate OJP heap used (MiB)",
-            f"OJP heap used vs load — {scenario_title}",
-        ),
-        (
-            "ojp_heap_committed_vs_load.png",
-            "ojp_heap_committed_mib",
-            "Aggregate OJP heap committed (MiB)",
-            f"OJP heap committed vs load — {scenario_title}",
-        ),
-        (
             "ojp_heap_utilisation_vs_load.png",
             "ojp_heap_utilisation_percent",
             "Aggregate OJP heap utilisation (%)",
@@ -245,14 +233,14 @@ def write_paper_outputs(
         ):
             paths[out.relative_to(out_dir).as_posix()] = out
 
-    heap_triplet_out = out_dir / "ojp_heap_used_committed_max_vs_load.png"
-    if _plot_ojp_heap_triplet(
+    heap_combined_out = out_dir / "ojp_heap_used_committed_vs_load.png"
+    if _plot_ojp_heap_combined(
         summary_df,
-        heap_triplet_out,
-        title=f"OJP heap used, committed, and max vs load — {scenario_title}",
+        heap_combined_out,
+        title=f"OJP heap used and committed vs load — {scenario_title}",
         warnings=warnings,
     ):
-        paths[heap_triplet_out.relative_to(out_dir).as_posix()] = heap_triplet_out
+        paths[heap_combined_out.relative_to(out_dir).as_posix()] = heap_combined_out
 
     index_out = out_dir / "main_graphs_index.md"
     index_out.write_text(_paper_index_markdown(), encoding="utf-8")
@@ -851,7 +839,7 @@ def _plot_ojp_heap_metric_line(
     return True
 
 
-def _plot_ojp_heap_triplet(
+def _plot_ojp_heap_combined(
     summary_df: pd.DataFrame,
     out: Path,
     *,
@@ -861,7 +849,6 @@ def _plot_ojp_heap_triplet(
     metric_specs = (
         ("ojp_heap_used_mib", "Heap used", "-"),
         ("ojp_heap_committed_mib", "Heap committed", "--"),
-        ("ojp_heap_max_mib", "Heap max", ":"),
     )
     metric_frames = {name: _ojp_metric_df(summary_df, name) for name, _, _ in metric_specs}
     missing = [name for name, df in metric_frames.items() if df.empty]
@@ -1167,16 +1154,8 @@ def _paper_index_markdown() -> str:
             "- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from `summary_stats.csv`.",
             "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.",
             (
-                "- `ojp_heap_used_vs_load.png`: `ojp_heap_used_mib` from "
-                "`summary_stats.csv` when OJP JVM heap data exists."
-            ),
-            (
-                "- `ojp_heap_committed_vs_load.png`: `ojp_heap_committed_mib` from "
-                "`summary_stats.csv` when OJP JVM heap data exists."
-            ),
-            (
-                "- `ojp_heap_used_committed_max_vs_load.png`: `ojp_heap_used_mib`, "
-                "`ojp_heap_committed_mib`, and `ojp_heap_max_mib` from "
+                "- `ojp_heap_used_committed_vs_load.png`: `ojp_heap_used_mib` and "
+                "`ojp_heap_committed_mib` from "
                 "`summary_stats.csv` when OJP JVM heap data exists."
             ),
             (
@@ -1234,14 +1213,9 @@ def _graph_rationale_markdown() -> str:
                 "max shows the configured JVM ceiling."
             ),
             "",
-            "- `ojp_heap_used_vs_load.png`: shows live Java heap demand as load rises.",
             (
-                "- `ojp_heap_committed_vs_load.png`: shows how much heap the JVM keeps "
-                "reserved for reuse."
-            ),
-            (
-                "- `ojp_heap_used_committed_max_vs_load.png`: shows the relationship "
-                "between live usage, retained heap, and configured heap ceiling."
+                "- `ojp_heap_used_committed_vs_load.png`: shows live Java heap demand "
+                "and how much heap the JVM keeps reserved for reuse on the same view."
             ),
             (
                 "- `ojp_heap_utilisation_vs_load.png`: shows how close OJP is to the "
