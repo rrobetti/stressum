@@ -272,6 +272,9 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
         "OJP runs on the JVM, so RSS alone can overstate live application memory pressure."
         in rationale
     )
+    assert "The shaded band above and below a line is the 95% confidence interval." in rationale
+    assert "`throughput_vs_load.png`: the top-level throughput view." in rationale
+    assert "`ojp_heap_used_committed_vs_load.png`: keeps heap used and heap committed" in rationale
     summary_df = pd.read_csv(report / "summary_stats.csv")
     assert {
         "ojp_heap_used_mib",
