@@ -10,7 +10,7 @@ import pytest
 from stressum.aggregate import aggregate_bundle, postgres_process_summary, proxy_tier_cpu_summary
 from stressum.cli import main
 from stressum.load import load_run_bundle
-from stressum.paper import _paper_repetition_dataframe, _summary_stats_dataframe
+from stressum.paper import _paper_color, _paper_repetition_dataframe, _summary_stats_dataframe
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "minimal-run"
 
@@ -33,6 +33,37 @@ def _scenario_entry(run_dir: Path, label: str) -> dict[str, object]:
         "total_footprint": None,
         "run_metadata": bundle.metadata or {},
     }
+
+
+def _write_ojp_jvm_metrics(
+    run_dir: Path,
+    *,
+    node_specs: dict[str, list[tuple[float, float, float | None]]],
+    xmx: str | None = None,
+) -> None:
+    proxy_dir = run_dir / "node_metrics" / "proxy"
+    proxy_dir.mkdir(parents=True, exist_ok=True)
+    for node_name, rows in node_specs.items():
+        has_heap_max = any(heap_max is not None for _, _, heap_max in rows)
+        header = "timestamp,heap_used_mb,heap_committed_mb"
+        if has_heap_max:
+            header += ",heap_max_mb"
+        lines = [header]
+        for index, (used, committed, heap_max) in enumerate(rows):
+            timestamp = f"2026-01-01T00:00:0{index}Z"
+            line = f"{timestamp},{used:.2f},{committed:.2f}"
+            if has_heap_max:
+                line += f",{heap_max:.2f}" if heap_max is not None else ","
+            lines.append(line)
+        (proxy_dir / f"{node_name}_jvm_metrics.csv").write_text(
+            "\n".join(lines) + "\n",
+            encoding="utf-8",
+        )
+    if xmx is not None:
+        metadata_path = run_dir / "run_metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["environment"] = {"jvmArgs": [f"-Xmx{xmx}"]}
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
 
 def test_paper_repetition_grouping_and_ci(tmp_path: Path) -> None:
@@ -69,6 +100,54 @@ def test_paper_repetition_grouping_and_ci(tmp_path: Path) -> None:
     assert successful["stddev"] > 0.0
     assert successful["ci95_high"] > successful["mean"]
     assert successful["ci95_low"] < successful["mean"]
+
+
+def test_paper_aggregates_ojp_heap_metrics_and_summary_stats(tmp_path: Path) -> None:
+    scenarios: list[dict[str, object]] = []
+    expected_heap_used: list[float] = []
+    for index in range(5):
+        run_dir = tmp_path / f"ojp-{index}"
+        shutil.copytree(FIXTURE, run_dir)
+        for replica_name in ("replica-0", "replica-1"):
+            summary_path = run_dir / replica_name / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["runInfo"]["targetRps"] = 100
+            summary_path.write_text(json.dumps(summary), encoding="utf-8")
+        _write_ojp_jvm_metrics(
+            run_dir,
+            xmx="256m",
+            node_specs={
+                "ojp-1": [(10.0 + index, 20.0, None), (12.0 + index, 20.0, None)],
+                "ojp-2": [(30.0 + index, 40.0, None), (32.0 + index, 40.0, None)],
+            },
+        )
+        expected_heap_used.append((11.0 + index) + (31.0 + index))
+        scenarios.append(_scenario_entry(run_dir, f"OJP {chr(ord('A') + index)}"))
+
+    repetition_df, warnings = _paper_repetition_dataframe(
+        scenarios,
+        load_map={},
+        expected_repetitions=5,
+    )
+
+    assert not warnings
+    assert repetition_df["ojp_heap_used_mib"].tolist() == expected_heap_used
+    assert repetition_df["ojp_heap_committed_mib"].tolist() == [60.0] * 5
+    assert repetition_df["ojp_heap_max_mib"].tolist() == [512.0] * 5
+    assert repetition_df["ojp_heap_utilisation_percent"].tolist() == pytest.approx(
+        [(value / 512.0) * 100.0 for value in expected_heap_used]
+    )
+
+    summary_df = _summary_stats_dataframe(repetition_df)
+    assert {
+        "ojp_heap_used_mib",
+        "ojp_heap_committed_mib",
+        "ojp_heap_max_mib",
+        "ojp_heap_utilisation_percent",
+    }.issubset(set(summary_df["metric_name"]))
+    heap_used = summary_df.loc[summary_df["metric_name"] == "ojp_heap_used_mib"].iloc[0]
+    assert heap_used["mean"] == pytest.approx(sum(expected_heap_used) / len(expected_heap_used))
+    assert heap_used["max"] == max(expected_heap_used)
 
 
 def test_paper_detects_missing_load_metadata(tmp_path: Path) -> None:
@@ -141,6 +220,60 @@ def test_compare_generates_report_and_debug_outputs(
     }.issubset(summary_df.columns)
 
 
+def test_compare_generates_ojp_heap_outputs_and_rationale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    labels = []
+    for index in range(5):
+        run_name = f"ojp-{index}"
+        run_dir = tmp_path / run_name
+        shutil.copytree(FIXTURE, run_dir)
+        for replica_name in ("replica-0", "replica-1"):
+            summary_path = run_dir / replica_name / "summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["runInfo"]["targetRps"] = 100
+            summary_path.write_text(json.dumps(summary), encoding="utf-8")
+        _write_ojp_jvm_metrics(
+            run_dir,
+            node_specs={
+                "ojp-1": [(20.0 + index, 40.0, 256.0), (22.0 + index, 40.0, 256.0)],
+                "ojp-2": [(30.0 + index, 45.0, 256.0), (32.0 + index, 45.0, 256.0)],
+            },
+        )
+        labels.append({"path": run_name, "label": f"OJP {chr(ord('A') + index)}"})
+    (tmp_path / "stressum-comparison.json").write_text(
+        json.dumps({"runs": labels}),
+        encoding="utf-8",
+    )
+
+    assert main(["--all", "--repetitions", "5"]) == 0
+    out = _latest_comparison_out(tmp_path)
+    report = out / "report"
+    debug = out / "debug"
+    for name in (
+        "ojp_heap_used_vs_load.png",
+        "ojp_heap_committed_vs_load.png",
+        "ojp_heap_used_committed_max_vs_load.png",
+        "ojp_heap_utilisation_vs_load.png",
+    ):
+        assert (report / name).is_file()
+    assert (debug / "ojp_heap_per_node_boxplot.png").is_file()
+    rationale = (report / "GRAPH_RATIONALE.md").read_text(encoding="utf-8")
+    assert (
+        "OJP runs on the JVM, so RSS alone can overstate live application memory pressure."
+        in rationale
+    )
+    summary_df = pd.read_csv(report / "summary_stats.csv")
+    assert {
+        "ojp_heap_used_mib",
+        "ojp_heap_committed_mib",
+        "ojp_heap_max_mib",
+        "ojp_heap_utilisation_percent",
+    }.issubset(set(summary_df["metric_name"]))
+
+
 def test_compare_handles_missing_metrics_safely(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -172,3 +305,10 @@ def test_compare_handles_missing_metrics_safely(
     out = _latest_comparison_out(tmp_path)
     assert (out / "report" / "postgres_backend_connections_vs_load.png").is_file()
     assert (out / "report" / "postgres_cpu_vs_load.png").is_file()
+    assert not (out / "report" / "ojp_heap_used_vs_load.png").exists()
+    meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
+    assert any("OJP JVM heap metrics" in warning for warning in meta["report_warnings"])
+
+
+def test_paper_color_uses_central_ojp_blue() -> None:
+    assert _paper_color("OJP") == "steelblue"

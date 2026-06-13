@@ -19,7 +19,7 @@ from stressum.aggregate import (
 from stressum.comparison_plots import write_comparison_plots
 from stressum.hdr_merge import merge_run_histogram
 from stressum.load import RunBundle, load_run_bundle
-from stressum.paper import write_paper_outputs
+from stressum.paper import write_ojp_heap_debug_outputs, write_paper_outputs
 from stressum.tables import run_summary_dict
 
 
@@ -268,6 +268,14 @@ def run_comparison(
         appendix_dir = out_dir / "debug"
         print("Generating debug/appendix plots...", flush=True)
         appendix_paths = write_comparison_plots(scenarios_plot, appendix_dir)
+        heap_debug_paths, heap_debug_warnings = write_ojp_heap_debug_outputs(
+            scenarios_plot,
+            appendix_dir,
+            expected_repetitions=expected_repetitions,
+            load_map_path=load_map_path,
+        )
+        appendix_paths.update(heap_debug_paths)
+        report_warnings.extend(heap_debug_warnings)
         plot_paths.update({f"debug/{rel_path}": path for rel_path, path in appendix_paths.items()})
         print(f"  Generated {len(appendix_paths)} debug artifact(s)", flush=True)
     if generate_paper:
@@ -287,6 +295,7 @@ def run_comparison(
             return 2, {}
         plot_paths.update({f"report/{rel_path}": path for rel_path, path in paper_paths.items()})
         print(f"  Generated {len(paper_paths)} report artifact(s)", flush=True)
+    report_warnings = list(dict.fromkeys(report_warnings))
 
     try:
         stressum_ver = version("stressum")

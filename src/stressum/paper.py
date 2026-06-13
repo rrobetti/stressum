@@ -52,6 +52,10 @@ _SUMMARY_METRICS: dict[str, str] = {
     "postgres_rss_mib": "postgres_rss_mib",
     "proxy_tier_cpu_pct": "proxy_tier_cpu_pct",
     "proxy_tier_rss_mib": "proxy_tier_rss_mib",
+    "ojp_heap_used_mib": "ojp_heap_used_mib",
+    "ojp_heap_committed_mib": "ojp_heap_committed_mib",
+    "ojp_heap_max_mib": "ojp_heap_max_mib",
+    "ojp_heap_utilisation_percent": "ojp_heap_utilisation_percent",
 }
 
 
@@ -65,7 +69,7 @@ def write_paper_outputs(
     slo_error_rate_pct: float,
 ) -> tuple[dict[str, Path], list[str]]:
     load_map = _load_map(load_map_path) if load_map_path is not None else {}
-    repetition_df, warnings = _paper_repetition_dataframe(
+    repetition_df, _, warnings = _paper_dataframes(
         scenarios,
         load_map=load_map,
         expected_repetitions=expected_repetitions,
@@ -210,10 +214,82 @@ def write_paper_outputs(
     )
     paths[slo_out.relative_to(out_dir).as_posix()] = slo_out
 
+    for filename, metric, ylabel, title in (
+        (
+            "ojp_heap_used_vs_load.png",
+            "ojp_heap_used_mib",
+            "Aggregate OJP heap used (MiB)",
+            f"OJP heap used vs load — {scenario_title}",
+        ),
+        (
+            "ojp_heap_committed_vs_load.png",
+            "ojp_heap_committed_mib",
+            "Aggregate OJP heap committed (MiB)",
+            f"OJP heap committed vs load — {scenario_title}",
+        ),
+        (
+            "ojp_heap_utilisation_vs_load.png",
+            "ojp_heap_utilisation_percent",
+            "Aggregate OJP heap utilisation (%)",
+            f"OJP heap utilisation vs load — {scenario_title}",
+        ),
+    ):
+        out = out_dir / filename
+        if _plot_ojp_heap_metric_line(
+            summary_df,
+            metric,
+            out,
+            ylabel=ylabel,
+            title=title,
+            warnings=warnings,
+        ):
+            paths[out.relative_to(out_dir).as_posix()] = out
+
+    heap_triplet_out = out_dir / "ojp_heap_used_committed_max_vs_load.png"
+    if _plot_ojp_heap_triplet(
+        summary_df,
+        heap_triplet_out,
+        title=f"OJP heap used, committed, and max vs load — {scenario_title}",
+        warnings=warnings,
+    ):
+        paths[heap_triplet_out.relative_to(out_dir).as_posix()] = heap_triplet_out
+
     index_out = out_dir / "main_graphs_index.md"
     index_out.write_text(_paper_index_markdown(), encoding="utf-8")
     paths[index_out.relative_to(out_dir).as_posix()] = index_out
-    return paths, warnings
+    rationale_out = out_dir / "GRAPH_RATIONALE.md"
+    rationale_out.write_text(_graph_rationale_markdown(), encoding="utf-8")
+    paths[rationale_out.relative_to(out_dir).as_posix()] = rationale_out
+    return paths, list(dict.fromkeys(warnings))
+
+
+def write_ojp_heap_debug_outputs(
+    scenarios: list[dict[str, Any]],
+    out_dir: Path,
+    *,
+    expected_repetitions: int,
+    load_map_path: Path | None,
+) -> tuple[dict[str, Path], list[str]]:
+    load_map = _load_map(load_map_path) if load_map_path is not None else {}
+    try:
+        _, heap_node_df, warnings = _paper_dataframes(
+            scenarios,
+            load_map=load_map,
+            expected_repetitions=expected_repetitions,
+        )
+    except ValueError as exc:
+        return {}, [f"{exc}; skipping ojp_heap_per_node_boxplot.png"]
+    paths: dict[str, Path] = {}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / "ojp_heap_per_node_boxplot.png"
+    if _plot_ojp_heap_per_node_boxplot(
+        heap_node_df,
+        out,
+        title="OJP heap used per node by load",
+        warnings=warnings,
+    ):
+        paths[out.relative_to(out_dir).as_posix()] = out
+    return paths, list(dict.fromkeys(warnings))
 
 
 def _load_map(path: Path) -> dict[str, Any]:
@@ -229,16 +305,35 @@ def _paper_repetition_dataframe(
     load_map: dict[str, Any],
     expected_repetitions: int,
 ) -> tuple[pd.DataFrame, list[str]]:
+    repetition_df, _, warnings = _paper_dataframes(
+        scenarios,
+        load_map=load_map,
+        expected_repetitions=expected_repetitions,
+    )
+    return repetition_df, warnings
+
+
+def _paper_dataframes(
+    scenarios: list[dict[str, Any]],
+    *,
+    load_map: dict[str, Any],
+    expected_repetitions: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     rows: list[dict[str, Any]] = []
+    heap_node_rows: list[dict[str, Any]] = []
     warnings: list[str] = []
     missing_load_labels: list[str] = []
     for scenario in scenarios:
-        row, warning_messages = _paper_row_for_scenario(scenario, load_map=load_map)
+        row, scenario_heap_node_rows, warning_messages = _paper_row_for_scenario(
+            scenario,
+            load_map=load_map,
+        )
         warnings.extend(warning_messages)
         if row is None:
             missing_load_labels.append(str(scenario["label"]))
             continue
         rows.append(row)
+        heap_node_rows.extend(scenario_heap_node_rows)
     if missing_load_labels:
         missing_text = ", ".join(sorted(missing_load_labels))
         raise ValueError(
@@ -247,8 +342,9 @@ def _paper_repetition_dataframe(
         )
 
     df = pd.DataFrame(rows)
+    heap_node_df = pd.DataFrame(heap_node_rows)
     if df.empty:
-        return df, warnings
+        return df, heap_node_df, warnings
 
     group_cols = ["scenario", "workload", "technology", "per_node_rps", "aggregate_rps"]
     df = df.sort_values(group_cols + ["label", "run_dir"]).reset_index(drop=True)
@@ -268,14 +364,20 @@ def _paper_repetition_dataframe(
                 f"{expected_repetitions} repetitions for {row['technology']} @ "
                 f"{row['aggregate_rps']:g} RPS, found {int(row['repetition_count'])}"
             )
-    return df, warnings
+    if not heap_node_df.empty:
+        node_group_cols = group_cols + ["node_name"]
+        heap_node_df = heap_node_df.sort_values(node_group_cols + ["label", "run_dir"]).reset_index(
+            drop=True
+        )
+        heap_node_df["repetition"] = heap_node_df.groupby(node_group_cols).cumcount() + 1
+    return df, heap_node_df, list(dict.fromkeys(warnings))
 
 
 def _paper_row_for_scenario(
     scenario: dict[str, Any],
     *,
     load_map: dict[str, Any],
-) -> tuple[dict[str, Any] | None, list[str]]:
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[str]]:
     bundle: RunBundle = scenario["bundle"]
     agg = scenario["agg"]
     run_info = bundle.summaries[0].get("runInfo") or {}
@@ -292,13 +394,21 @@ def _paper_row_for_scenario(
         bundle=bundle,
     )
     if load_level is None:
-        return None, []
+        return None, [], []
 
     p95_ms, p99_ms = _paper_latency_percentiles(scenario)
     postgres_process = scenario.get("postgres_process") or {}
     proxy_cpu = scenario.get("proxy_cpu") or {}
     proxy_rss = proxy_tier_rss_summary(bundle) or {}
     pg_backends = _postgres_backend_connections(bundle)
+    heap_metrics = {
+        "ojp_heap_used_mib": math.nan,
+        "ojp_heap_committed_mib": math.nan,
+        "ojp_heap_max_mib": math.nan,
+        "ojp_heap_utilisation_percent": math.nan,
+    }
+    heap_node_rows: list[dict[str, Any]] = []
+    heap_warnings: list[str] = []
 
     row: dict[str, Any] = {
         "label": str(scenario["label"]),
@@ -326,14 +436,25 @@ def _paper_row_for_scenario(
         "proxy_tier_cpu_pct": _float_or_zero(proxy_cpu.get("service_cpu_mean_pct"), technology),
         "proxy_tier_rss_mib": _float_or_zero(proxy_rss.get("rss_mb_mean"), technology),
         "duration_seconds": _float_or_nan(run_info.get("durationSeconds")),
+        **heap_metrics,
     }
+    if technology == "OJP":
+        heap_metrics, heap_node_rows, heap_warnings = _ojp_heap_metrics_for_scenario(
+            row,
+            bundle=bundle,
+            run_info=run_info,
+            metadata=metadata,
+        )
+        row.update(heap_metrics)
 
     for category in _ERROR_CATEGORIES:
         row[f"error_count_{_slug_metric(category)}"] = 0.0
     for error_name, count in agg.errors_by_type.items():
         category = _error_category(error_name)
         row[f"error_count_{_slug_metric(category)}"] += float(count)
-    return row, _missing_metric_warnings(row)
+    warnings = _missing_metric_warnings(row)
+    warnings.extend(heap_warnings)
+    return row, heap_node_rows, list(dict.fromkeys(warnings))
 
 
 def _infer_load_level(
@@ -472,6 +593,10 @@ def _ordered_technologies(values: list[str]) -> list[str]:
     return ordered + [name for name in values if name not in ordered]
 
 
+def _paper_color(technology: str) -> str:
+    return _PAPER_COLORS.get(technology, "gray")
+
+
 def _summary_stats_dataframe(repetition_df: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     group_cols = ["scenario", "workload", "technology", "per_node_rps", "aggregate_rps"]
@@ -567,7 +692,7 @@ def _plot_metric_line(
         ys = tech_df["mean"].to_numpy(dtype=float)
         ci_low = tech_df["ci95_low"].to_numpy(dtype=float)
         ci_high = tech_df["ci95_high"].to_numpy(dtype=float)
-        color = _PAPER_COLORS.get(technology, "gray")
+        color = _paper_color(technology)
         ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label=technology)
         ax.fill_between(xs, ci_low, ci_high, color=color, alpha=0.18)
     if not any_series:
@@ -612,7 +737,7 @@ def _plot_attempted_completed_chart(
                 continue
             xs = tech_df["aggregate_rps"].to_numpy(dtype=float)
             ys = tech_df["mean"].to_numpy(dtype=float)
-            color = _PAPER_COLORS.get(technology, "gray")
+            color = _paper_color(technology)
             ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label=technology)
             if metric_name != "offered_rps":
                 ax.fill_between(
@@ -655,7 +780,7 @@ def _plot_metric_boxplot(
     for position, group in enumerate(groups, start=1):
         positions.append(float(position))
         values.append(group["values"])
-        colors.append(_PAPER_COLORS.get(group["technology"], "gray"))
+        colors.append(_paper_color(group["technology"]))
         labels.append(group["label"])
     box = ax.boxplot(values, positions=positions, widths=0.6, patch_artist=True, showfliers=False)
     for patch, color in zip(box["boxes"], colors, strict=True):
@@ -675,11 +800,175 @@ def _plot_metric_boxplot(
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     legend_handles = [
-        mpatches.Patch(color=_PAPER_COLORS[name], label=name, alpha=0.35)
+        mpatches.Patch(color=_paper_color(name), label=name, alpha=0.35)
         for name in _ordered_technologies([group["technology"] for group in groups])
     ]
     ax.legend(handles=legend_handles, loc="best")
     _save_plot(fig, out)
+
+
+def _ojp_metric_df(summary_df: pd.DataFrame, metric_name: str) -> pd.DataFrame:
+    metric_df = _summary_metric(summary_df, metric_name)
+    if metric_df.empty:
+        return metric_df
+    return metric_df.loc[metric_df["technology"] == "OJP"].copy()
+
+
+def _plot_ojp_heap_metric_line(
+    summary_df: pd.DataFrame,
+    metric_name: str,
+    out: Path,
+    *,
+    ylabel: str,
+    title: str,
+    warnings: list[str],
+) -> bool:
+    metric_df = _ojp_metric_df(summary_df, metric_name)
+    if metric_df.empty:
+        warnings.append(f"Missing {metric_name} series for OJP; skipping affected OJP heap graphs")
+        return False
+    x_values, tick_labels = _metric_ticks(metric_df)
+    color = _paper_color("OJP")
+    fig, ax = plt.subplots(figsize=(8.8, 4.3))
+    tech_df = metric_df.sort_values("aggregate_rps")
+    xs = tech_df["aggregate_rps"].to_numpy(dtype=float)
+    ys = tech_df["mean"].to_numpy(dtype=float)
+    ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label="OJP")
+    ax.fill_between(
+        xs,
+        tech_df["ci95_low"].to_numpy(dtype=float),
+        tech_df["ci95_high"].to_numpy(dtype=float),
+        color=color,
+        alpha=0.18,
+    )
+    ax.set_xticks(x_values)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Load (per-node RPS / aggregate RPS)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(loc="best")
+    _save_plot(fig, out)
+    return True
+
+
+def _plot_ojp_heap_triplet(
+    summary_df: pd.DataFrame,
+    out: Path,
+    *,
+    title: str,
+    warnings: list[str],
+) -> bool:
+    metric_specs = (
+        ("ojp_heap_used_mib", "Heap used", "-"),
+        ("ojp_heap_committed_mib", "Heap committed", "--"),
+        ("ojp_heap_max_mib", "Heap max", ":"),
+    )
+    metric_frames = {name: _ojp_metric_df(summary_df, name) for name, _, _ in metric_specs}
+    missing = [name for name, df in metric_frames.items() if df.empty]
+    if missing:
+        warnings.append(
+            "Missing "
+            + ", ".join(missing)
+            + " series for OJP; skipping affected OJP heap graphs"
+        )
+        return False
+    color = _paper_color("OJP")
+    x_values, tick_labels = _metric_ticks(metric_frames["ojp_heap_used_mib"])
+    fig, ax = plt.subplots(figsize=(8.8, 4.3))
+    for metric_name, label, linestyle in metric_specs:
+        metric_df = metric_frames[metric_name].sort_values("aggregate_rps")
+        ax.plot(
+            metric_df["aggregate_rps"].to_numpy(dtype=float),
+            metric_df["mean"].to_numpy(dtype=float),
+            marker="o",
+            linewidth=1.4,
+            linestyle=linestyle,
+            color=color,
+            label=label,
+        )
+    ax.set_xticks(x_values)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Load (per-node RPS / aggregate RPS)")
+    ax.set_ylabel("Aggregate OJP heap (MiB)")
+    ax.set_title(title)
+    ax.legend(loc="best")
+    _save_plot(fig, out)
+    return True
+
+
+def _plot_ojp_heap_per_node_boxplot(
+    heap_node_df: pd.DataFrame,
+    out: Path,
+    *,
+    title: str,
+    warnings: list[str],
+) -> bool:
+    if heap_node_df.empty:
+        warnings.append(
+            "Missing ojp_heap_used_mib per-node series for OJP; "
+            "skipping affected OJP heap graphs"
+        )
+        return False
+    groups: list[dict[str, Any]] = []
+    loads = (
+        heap_node_df[["per_node_rps", "aggregate_rps"]]
+        .drop_duplicates()
+        .sort_values(["aggregate_rps", "per_node_rps"])
+        .itertuples(index=False)
+    )
+    node_names = sorted(heap_node_df["node_name"].dropna().unique().tolist())
+    for load in loads:
+        for node_name in node_names:
+            subset = heap_node_df.loc[
+                (heap_node_df["per_node_rps"] == load.per_node_rps)
+                & (heap_node_df["aggregate_rps"] == load.aggregate_rps)
+                & (heap_node_df["node_name"] == node_name),
+                "ojp_heap_used_mib",
+            ]
+            values = pd.to_numeric(subset, errors="coerce").dropna().tolist()
+            if not values:
+                continue
+            groups.append(
+                {
+                    "label": f"{node_name}\n{load.per_node_rps:g}/node\n{load.aggregate_rps:g} agg",
+                    "values": values,
+                }
+            )
+    if not groups:
+        warnings.append(
+            "Missing ojp_heap_used_mib per-node series for OJP; "
+            "skipping affected OJP heap graphs"
+        )
+        return False
+    fig, ax = plt.subplots(figsize=(max(9.0, len(groups) * 0.8), 4.8))
+    positions = [float(index) for index in range(1, len(groups) + 1)]
+    color = _paper_color("OJP")
+    box = ax.boxplot(
+        [group["values"] for group in groups],
+        positions=positions,
+        widths=0.6,
+        patch_artist=True,
+        showfliers=False,
+    )
+    for patch in box["boxes"]:
+        patch.set_facecolor(color)
+        patch.set_alpha(0.35)
+    for position, group in zip(positions, groups, strict=True):
+        jitter = np.linspace(-0.12, 0.12, max(len(group["values"]), 1))
+        ax.scatter(
+            position + jitter[: len(group["values"])],
+            group["values"],
+            color=color,
+            s=18,
+            zorder=3,
+        )
+    ax.set_xticks(positions)
+    ax.set_xticklabels([group["label"] for group in groups], rotation=30, ha="right")
+    ax.set_ylabel("OJP heap used (MiB)")
+    ax.set_title(title)
+    ax.legend(handles=[mpatches.Patch(color=color, label="OJP", alpha=0.35)], loc="best")
+    _save_plot(fig, out)
+    return True
 
 
 def _boxplot_groups(repetition_df: pd.DataFrame, metric_name: str) -> list[dict[str, Any]]:
@@ -878,12 +1167,89 @@ def _paper_index_markdown() -> str:
             "- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from `summary_stats.csv`.",
             "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.",
             (
+                "- `ojp_heap_used_vs_load.png`: `ojp_heap_used_mib` from "
+                "`summary_stats.csv` when OJP JVM heap data exists."
+            ),
+            (
+                "- `ojp_heap_committed_vs_load.png`: `ojp_heap_committed_mib` from "
+                "`summary_stats.csv` when OJP JVM heap data exists."
+            ),
+            (
+                "- `ojp_heap_used_committed_max_vs_load.png`: `ojp_heap_used_mib`, "
+                "`ojp_heap_committed_mib`, and `ojp_heap_max_mib` from "
+                "`summary_stats.csv` when OJP JVM heap data exists."
+            ),
+            (
+                "- `ojp_heap_utilisation_vs_load.png`: "
+                "`ojp_heap_utilisation_percent` from `summary_stats.csv` when OJP JVM "
+                "heap data exists."
+            ),
+            (
                 "- `error_type_breakdown.png`: `error_count_*` columns from "
                 "`repetition_values.csv` grouped by technology and load."
             ),
             (
                 "- `slo_heatmap.png`: `p95_latency_ms` and `error_rate_pct` from "
                 "`summary_stats.csv` compared against CLI SLO thresholds."
+            ),
+            (
+                "- `GRAPH_RATIONALE.md`: explains why each main figure exists, including "
+                "the OJP-specific heap diagnostics."
+            ),
+            "",
+        ]
+    )
+
+
+def _graph_rationale_markdown() -> str:
+    return "\n".join(
+        [
+            "# Graph rationale",
+            "",
+            "## Core comparison figures",
+            "",
+            (
+                "- Throughput, latency, error-rate, backend-connection, and proxy/database "
+                "resource graphs stay grouped by load level so repeated runs can be "
+                "compared statistically."
+            ),
+            (
+                "- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% "
+                "confidence intervals for the report figures."
+            ),
+            (
+                "- `repetition_values.csv` keeps repetition-level raw values for boxplots "
+                "and downstream analysis."
+            ),
+            "",
+            "## OJP heap diagnostics",
+            "",
+            (
+                "OJP runs on the JVM, so RSS alone can overstate live application memory pressure. "
+                "Java may retain committed heap for reuse, which means high RSS does not "
+                "necessarily mean high live object usage. For that reason, Stressum reports "
+                "RSS, heap used, heap committed, and heap max separately. RSS shows memory "
+                "reserved from the operating system. Heap used shows active Java object "
+                "memory. Heap committed shows memory retained by the JVM for reuse. Heap "
+                "max shows the configured JVM ceiling."
+            ),
+            "",
+            "- `ojp_heap_used_vs_load.png`: shows live Java heap demand as load rises.",
+            (
+                "- `ojp_heap_committed_vs_load.png`: shows how much heap the JVM keeps "
+                "reserved for reuse."
+            ),
+            (
+                "- `ojp_heap_used_committed_max_vs_load.png`: shows the relationship "
+                "between live usage, retained heap, and configured heap ceiling."
+            ),
+            (
+                "- `ojp_heap_utilisation_vs_load.png`: shows how close OJP is to the "
+                "configured JVM heap ceiling."
+            ),
+            (
+                "- `debug/ojp_heap_per_node_boxplot.png`: shows whether one OJP node "
+                "uses materially more heap than the others at the same load."
             ),
             "",
         ]
@@ -905,6 +1271,177 @@ def _missing_metric_warnings(row: dict[str, Any]) -> list[str]:
                 f"{metric_name} for {row['label']}; affected main-figure series will be skipped"
             )
     return warnings
+
+
+def _proxy_jvm_metric_paths(bundle: RunBundle) -> list[tuple[str, Path]]:
+    paths: list[tuple[str, Path]] = []
+    for key, path in sorted(bundle.node_metrics_csvs.items()):
+        if "/proxy/" not in key or "jvm_metrics" not in key.lower():
+            continue
+        node_name = Path(key).name
+        if node_name.endswith("_jvm_metrics.csv"):
+            node_name = node_name[: -len("_jvm_metrics.csv")]
+        else:
+            node_name = Path(key).stem
+        paths.append((node_name, path))
+    return paths
+
+
+def _median_metric(df: pd.DataFrame, columns: tuple[str, ...]) -> float | None:
+    for column in columns:
+        if column not in df.columns:
+            continue
+        values = pd.to_numeric(df[column], errors="coerce").dropna()
+        if not values.empty:
+            return float(values.median())
+    return None
+
+
+def _heap_max_mib_from_args(metadata: dict[str, Any], run_info: dict[str, Any]) -> float | None:
+    candidates: list[str] = []
+    for source in (
+        run_info.get("jvmArgs"),
+        metadata.get("jvmArgs"),
+        (metadata.get("environment") or {}).get("jvmArgs"),
+    ):
+        if isinstance(source, str):
+            candidates.append(source)
+        elif isinstance(source, list):
+            candidates.extend(str(item) for item in source)
+    for arg in candidates:
+        parsed = _parse_xmx_to_mib(arg)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_xmx_to_mib(arg: str) -> float | None:
+    normalized = arg.strip()
+    if not normalized.lower().startswith("-xmx"):
+        return None
+    raw_value = normalized[4:].strip()
+    match = re.fullmatch(r"(?i)(\d+(?:\.\d+)?)([kmgt]?i?b?)?", raw_value)
+    if match is None:
+        return None
+    magnitude = float(match.group(1))
+    suffix = (match.group(2) or "").lower().rstrip("b")
+    suffix = suffix[:-1] if suffix.endswith("i") else suffix
+    factors = {
+        "": 1.0 / (1024.0 * 1024.0),
+        "k": 1.0 / 1024.0,
+        "m": 1.0,
+        "g": 1024.0,
+        "t": 1024.0 * 1024.0,
+    }
+    factor = factors.get(suffix)
+    if factor is None:
+        return None
+    return magnitude * factor
+
+
+def _ojp_heap_metrics_for_scenario(
+    base_row: dict[str, Any],
+    *,
+    bundle: RunBundle,
+    run_info: dict[str, Any],
+    metadata: dict[str, Any],
+) -> tuple[dict[str, float], list[dict[str, Any]], list[str]]:
+    label = str(base_row["label"])
+    node_paths = _proxy_jvm_metric_paths(bundle)
+    if not node_paths:
+        return (
+            {
+                "ojp_heap_used_mib": math.nan,
+                "ojp_heap_committed_mib": math.nan,
+                "ojp_heap_max_mib": math.nan,
+                "ojp_heap_utilisation_percent": math.nan,
+            },
+            [],
+            [f"Missing OJP JVM heap metrics for {label}; skipping affected OJP heap graphs"],
+        )
+    fallback_heap_max = _heap_max_mib_from_args(metadata, run_info)
+    per_node_rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    missing_nodes: dict[str, list[str]] = {
+        "ojp_heap_used_mib": [],
+        "ojp_heap_committed_mib": [],
+        "ojp_heap_max_mib": [],
+    }
+    aggregate_sums = {
+        "ojp_heap_used_mib": 0.0,
+        "ojp_heap_committed_mib": 0.0,
+        "ojp_heap_max_mib": 0.0,
+    }
+    for node_name, path in node_paths:
+        try:
+            df = read_node_csv(path)
+        except Exception:
+            warnings.append(
+                f"Could not read OJP JVM heap metrics for {label} ({node_name}); "
+                "skipping affected OJP heap graphs"
+            )
+            missing_nodes["ojp_heap_used_mib"].append(node_name)
+            missing_nodes["ojp_heap_committed_mib"].append(node_name)
+            missing_nodes["ojp_heap_max_mib"].append(node_name)
+            continue
+        used_mib = _median_metric(df, ("heap_used_mib", "heap_used_mb"))
+        committed_mib = _median_metric(df, ("heap_committed_mib", "heap_committed_mb"))
+        heap_max_mib = _median_metric(df, ("heap_max_mib", "heap_max_mb"))
+        if heap_max_mib is None:
+            heap_max_mib = fallback_heap_max
+        metric_values = {
+            "ojp_heap_used_mib": used_mib,
+            "ojp_heap_committed_mib": committed_mib,
+            "ojp_heap_max_mib": heap_max_mib,
+        }
+        per_node_row = {
+            key: base_row[key]
+            for key in (
+                "label",
+                "run_dir",
+                "scenario",
+                "workload",
+                "technology",
+                "per_node_rps",
+                "aggregate_rps",
+            )
+        }
+        per_node_row["node_name"] = node_name
+        per_node_row["ojp_heap_used_mib"] = (
+            float(used_mib) if isinstance(used_mib, (int, float)) else math.nan
+        )
+        if isinstance(used_mib, (int, float)):
+            per_node_rows.append(per_node_row)
+        for metric_name, value in metric_values.items():
+            if isinstance(value, (int, float)):
+                aggregate_sums[metric_name] += float(value)
+            else:
+                missing_nodes[metric_name].append(node_name)
+    aggregate_metrics: dict[str, float] = {}
+    for metric_name, total in aggregate_sums.items():
+        missing = missing_nodes[metric_name]
+        if missing:
+            metric_label = metric_name.removeprefix("ojp_").removesuffix("_mib").replace("_", " ")
+            warnings.append(
+                f"Missing OJP {metric_label} for {label} "
+                f"({', '.join(sorted(set(missing)))}); skipping affected OJP heap graphs"
+            )
+            aggregate_metrics[metric_name] = math.nan
+        else:
+            aggregate_metrics[metric_name] = total
+    heap_max_total = aggregate_metrics["ojp_heap_max_mib"]
+    heap_used_total = aggregate_metrics["ojp_heap_used_mib"]
+    if (
+        isinstance(heap_max_total, float)
+        and not math.isnan(heap_max_total)
+        and heap_max_total > 0.0
+    ):
+        aggregate_metrics["ojp_heap_utilisation_percent"] = (
+            heap_used_total / heap_max_total
+        ) * 100.0
+    else:
+        aggregate_metrics["ojp_heap_utilisation_percent"] = math.nan
+    return aggregate_metrics, per_node_rows, list(dict.fromkeys(warnings))
 
 
 def _render_placeholder(ax: Any, title: str, text: str) -> None:

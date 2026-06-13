@@ -41,8 +41,9 @@ Output is written to `<project-root>/output/comparison-<YYYY-MM-dd-HHMMSS-micros
 - `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist, proxy-tier CPU, PostgreSQL process CPU/RSS when node metrics exist, **total resource footprint** columns — see [Total resource footprint](#total-resource-footprint-cross-technology))
 - `report/summary_stats.csv` — grouped summary statistics for main figures
 - `report/repetition_values.csv` — per-repetition values retained for machine-readable analysis
+- `report/GRAPH_RATIONALE.md` — rationale for the report graphs, including OJP heap-specific diagnostics
 - `report/*.png` — main figures grouped by load level and technology
-- `debug/*.png` — detailed appendix/debug figures grouped by run label
+- `debug/*.png` — detailed appendix/debug figures grouped by run label, plus load-grouped OJP heap diagnostics when JVM heap metrics exist
 
 Plot styling uses a fixed NumPy RNG seed for reproducible figures.
 
