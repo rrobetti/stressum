@@ -1,4 +1,4 @@
-# Stressar results — paper artifacts
+# Stressar results — report artifacts
 
 This repository holds Stressar benchmark exports under `results/` and documentation under `stressar-docs/`. The `stressum` CLI compares **two or more** exported runs from a JSON config and writes comparison artifacts (CSVs, figures, metadata).
 
@@ -27,11 +27,23 @@ Create **`stressum-comparison.json`** at the repository root (or in the current 
 uv run stressum
 ```
 
+Report-focused output can be generated explicitly:
+
+```bash
+uv run stressum --report
+uv run stressum --debug
+uv run stressum --all --repetitions 5 --slo-p95-ms 50 --slo-error-rate 1
+```
+
 Output is written to `<project-root>/output/comparison-<YYYY-MM-dd-HHMMSS-microseconds>/` (or `./output/...` from the current working directory when the checkout root cannot be detected) and includes:
 
 - `comparison_metadata.json` — scenarios, paths, HDR merge status, fairness warnings when `workload` / `loadMode` / `targetRps` differ across runs
 - `comparison_summary.csv` — one row per run (throughput, error rate, median replica percentiles, optional **merged** percentiles when `.hlog` HDR logs exist, proxy-tier CPU, PostgreSQL process CPU/RSS when node metrics exist, **total resource footprint** columns — see [Total resource footprint](#total-resource-footprint-cross-technology))
-- PNG figures — see [Generated figures](#generated-figures) below
+- `report/summary_stats.csv` — grouped summary statistics for main figures
+- `report/repetition_values.csv` — per-repetition values retained for machine-readable analysis
+- `report/GRAPH_RATIONALE.md` — rationale for the report graphs, including OJP heap-specific diagnostics
+- `report/*.png` — main figures grouped by load level and technology
+- `debug/*.png` — detailed appendix/debug figures grouped by run label, plus load-grouped OJP heap diagnostics when JVM heap metrics exist
 
 Plot styling uses a fixed NumPy RNG seed for reproducible figures.
 

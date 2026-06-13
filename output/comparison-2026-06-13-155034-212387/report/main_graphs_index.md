@@ -1,0 +1,23 @@
+# Main figures index
+
+- `summary_stats.csv`: grouped summary by scenario, workload, technology, per_node_rps, aggregate_rps, and metric_name.
+- `repetition_values.csv`: one row per repetition/run with raw values used for main figures.
+- `throughput_vs_load.png`: `successful_rps` from `summary_stats.csv`.
+- `attempted_completed_success_error_rps.png`: `offered_rps`, `attempted_rps`, `successful_rps`, and `error_rps` from `summary_stats.csv`.
+- `error_rate_vs_load.png`: `error_rate_pct` from `summary_stats.csv`.
+- `p95_latency_vs_load.png`: `p95_latency_ms` from `summary_stats.csv`.
+- `p99_latency_vs_load.png`: `p99_latency_ms` from `summary_stats.csv`.
+- `p95_latency_boxplot.png`: `p95_latency_ms` from `repetition_values.csv`.
+- `p99_latency_boxplot.png`: `p99_latency_ms` from `repetition_values.csv`.
+- `throughput_boxplot.png`: `successful_rps` from `repetition_values.csv`.
+- `postgres_backend_connections_vs_load.png`: `postgres_backend_connections` from `summary_stats.csv`.
+- `rps_per_db_connection_vs_load.png`: `rps_per_db_connection` from `summary_stats.csv`.
+- `postgres_cpu_vs_load.png`: `postgres_cpu_pct_avg` from `summary_stats.csv`.
+- `postgres_rss_vs_load.png`: `postgres_rss_mib` from `summary_stats.csv`.
+- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from `summary_stats.csv`.
+- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.
+- `ojp_heap_used_committed_vs_load.png`: `ojp_heap_used_mib` and `ojp_heap_committed_mib` from `summary_stats.csv` when OJP JVM heap data exists.
+- `ojp_heap_utilisation_vs_load.png`: `ojp_heap_utilisation_percent` from `summary_stats.csv` when OJP JVM heap data exists.
+- `error_type_breakdown.png`: `error_count_*` columns from `repetition_values.csv` grouped by technology and load.
+- `slo_heatmap.png`: `p95_latency_ms` and `error_rate_pct` from `summary_stats.csv` compared against CLI SLO thresholds.
+- `GRAPH_RATIONALE.md`: explains why each main figure exists, including the OJP-specific heap diagnostics.

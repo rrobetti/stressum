@@ -1,7 +1,7 @@
 [project]
 name = "stressum"
 version = "0.1.0"
-description = "Compare Stressar result bundles and generate paper-oriented comparison tables and figures."
+description = "Compare Stressar result bundles and generate report-oriented comparison tables and figures."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
