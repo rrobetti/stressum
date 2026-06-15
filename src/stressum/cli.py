@@ -41,7 +41,60 @@ def main_compare(argv: list[str] | None = None) -> int:
             "cannot be detected). HDR merge across replicas per run when logs are present."
         ),
     )
-    parser.parse_args(argv)
+    output_mode = parser.add_mutually_exclusive_group()
+    output_mode.add_argument(
+        "--report",
+        dest="report",
+        action="store_true",
+        help="Generate only report outputs for main figures under report/.",
+    )
+    output_mode.add_argument(
+        "--paper",
+        dest="report",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    output_mode.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        help="Generate only debug outputs for appendix figures under debug/.",
+    )
+    output_mode.add_argument(
+        "--appendix",
+        dest="debug",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    output_mode.add_argument(
+        "--all",
+        action="store_true",
+        help="Generate both report and debug outputs (default).",
+    )
+    parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=5,
+        help="Expected repetition count per technology/load level group.",
+    )
+    parser.add_argument(
+        "--load-map",
+        type=str,
+        help="Optional JSON file mapping run labels to load levels when metadata is insufficient.",
+    )
+    parser.add_argument(
+        "--slo-p95-ms",
+        type=float,
+        default=50.0,
+        help="p95 latency SLO threshold in milliseconds for the main-figure heatmap.",
+    )
+    parser.add_argument(
+        "--slo-error-rate",
+        type=float,
+        default=1.0,
+        help="Error-rate SLO threshold in percent for the main-figure heatmap.",
+    )
+    args = parser.parse_args(argv)
 
     base = discover_stressum_repo_root() or Path.cwd()
     cfg_path = (base / "stressum-comparison.json").expanduser().resolve()
@@ -49,12 +102,30 @@ def main_compare(argv: list[str] | None = None) -> int:
         print(f"Comparison config not found: {cfg_path}", file=sys.stderr)
         return 2
 
+    load_map_path = None
+    if args.load_map:
+        load_map_path = Path(args.load_map).expanduser()
+        if not load_map_path.is_absolute():
+            load_map_path = (cfg_path.parent / load_map_path).resolve()
+
     out = comparison_output_dir()
     print(f"Reading comparison config: {cfg_path}", flush=True)
     print(f"Output directory: {out}", flush=True)
     apply_paper_style()
 
-    code, _meta = run_comparison(cfg_path, out)
+    generate_paper = args.report or not args.debug
+    generate_appendix = args.debug or args.all or not args.report
+
+    code, _meta = run_comparison(
+        cfg_path,
+        out,
+        generate_paper=generate_paper,
+        generate_appendix=generate_appendix,
+        expected_repetitions=args.repetitions,
+        load_map_path=load_map_path,
+        slo_p95_ms=args.slo_p95_ms,
+        slo_error_rate_pct=args.slo_error_rate,
+    )
     return code
 
 
