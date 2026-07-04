@@ -569,7 +569,9 @@ def _paper_mean_failed_latency_ms(scenario: dict[str, Any]) -> float:
     for row in agg.rows:
         mean_failed_ms = row.get("mean_failed_ms")
         failed_requests = row.get("failed_requests")
-        if not isinstance(mean_failed_ms, (int, float)) or not isinstance(failed_requests, (int, float)):
+        if not isinstance(mean_failed_ms, (int, float)) or not isinstance(
+            failed_requests, (int, float)
+        ):
             continue
         if failed_requests <= 0:
             continue
