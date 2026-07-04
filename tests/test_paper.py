@@ -106,6 +106,8 @@ def test_paper_repetition_grouping_and_ci(tmp_path: Path) -> None:
     assert successful["stddev"] > 0.0
     assert successful["ci95_high"] > successful["mean"]
     assert successful["ci95_low"] < successful["mean"]
+    mean_failed = summary_df.loc[summary_df["metric_name"] == "mean_failed_latency_ms"].iloc[0]
+    assert pytest.approx(mean_failed["mean"], rel=1e-6) == ((5.0 * 10.0 + 6.0 * 20.0) / 30.0)
 
 
 def test_paper_aggregates_ojp_heap_metrics_and_summary_stats(tmp_path: Path) -> None:
@@ -206,6 +208,7 @@ def test_compare_generates_report_and_debug_outputs(
     assert (report / "summary_stats.csv").is_file()
     assert (report / "repetition_values.csv").is_file()
     assert (report / "throughput_vs_load.png").is_file()
+    assert (report / "mean_failed_latency_vs_load.png").is_file()
     assert (report / "slo_heatmap.png").is_file()
     assert (debug / "comparison_cross_tech_total_throughput.png").is_file()
     summary_df = pd.read_csv(report / "summary_stats.csv")
@@ -224,6 +227,7 @@ def test_compare_generates_report_and_debug_outputs(
         "ci95_low",
         "ci95_high",
     }.issubset(summary_df.columns)
+    assert "mean_failed_latency_ms" in set(summary_df["metric_name"])
 
 
 def test_compare_generates_ojp_heap_outputs_and_rationale(
