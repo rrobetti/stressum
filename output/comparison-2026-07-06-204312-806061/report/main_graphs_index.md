@@ -7,6 +7,7 @@
 - `error_rate_vs_load.png`: `error_rate_pct` from `summary_stats.csv`.
 - `p95_latency_vs_load.png`: `p95_latency_ms` from `summary_stats.csv`.
 - `p99_latency_vs_load.png`: `p99_latency_ms` from `summary_stats.csv`.
+- `mean_failed_latency_vs_load.png`: `mean_failed_latency_ms` from `summary_stats.csv`.
 - `p95_latency_boxplot.png`: `p95_latency_ms` from `repetition_values.csv`.
 - `p99_latency_boxplot.png`: `p99_latency_ms` from `repetition_values.csv`.
 - `throughput_boxplot.png`: `successful_rps` from `repetition_values.csv`.

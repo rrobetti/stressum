@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-06T19:18:30.763364+00:00",
+  "generated_at": "2026-07-06T19:44:36.044093+00:00",
   "stressum_version": "0.1.0",
   "config_path": "/home/rogerio/Projects/stressum/stressum-comparison.json",
-  "output_dir": "/home/rogerio/Projects/stressum/output/comparison-2026-07-06-201706-512869",
+  "output_dir": "/home/rogerio/Projects/stressum/output/comparison-2026-07-06-204312-806061",
   "global_warnings": [
     "runInfo mismatch for 'Hikari F': targetRps 1 vs 4 (baseline Hikari A)",
     "runInfo mismatch for 'Hikari G': targetRps 1 vs 4 (baseline Hikari A)",
@@ -5186,6 +5186,7 @@
     "report/error_rate_vs_load.png": "report/error_rate_vs_load.png",
     "report/error_type_breakdown.png": "report/error_type_breakdown.png",
     "report/main_graphs_index.md": "report/main_graphs_index.md",
+    "report/mean_failed_latency_vs_load.png": "report/mean_failed_latency_vs_load.png",
     "report/ojp_heap_used_committed_vs_load.png": "report/ojp_heap_used_committed_vs_load.png",
     "report/p95_latency_boxplot.png": "report/p95_latency_boxplot.png",
     "report/p95_latency_vs_load.png": "report/p95_latency_vs_load.png",

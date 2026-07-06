@@ -8,7 +8,7 @@
 
 ## Where mean ± 95% CI is used
 
-- Mean ± 95% CI is used in these report line graphs: `throughput_vs_load.png`, `error_rate_vs_load.png`, `p95_latency_vs_load.png`, `p99_latency_vs_load.png`, `postgres_backend_connections_vs_load.png`, `rps_per_db_connection_vs_load.png`, `postgres_cpu_vs_load.png`, `postgres_rss_vs_load.png`, `proxy_tier_cpu_vs_load.png`, `proxy_tier_rss_vs_load.png`, and `ojp_heap_utilisation_vs_load.png`.
+- Mean ± 95% CI is used in these report line graphs: `throughput_vs_load.png`, `error_rate_vs_load.png`, `p95_latency_vs_load.png`, `p99_latency_vs_load.png`, `mean_failed_latency_vs_load.png`, `postgres_backend_connections_vs_load.png`, `rps_per_db_connection_vs_load.png`, `postgres_cpu_vs_load.png`, `postgres_rss_vs_load.png`, `proxy_tier_cpu_vs_load.png`, `proxy_tier_rss_vs_load.png`, and `ojp_heap_utilisation_vs_load.png`.
 - Mean ± 95% CI is also used in the measured panels of `attempted_completed_success_error_rps.png`: attempted RPS, successful RPS, and error RPS. The offered RPS panel does not use a confidence interval because it is the configured target load, not an observed metric with run to run variation.
 - The combined OJP heap report graph (`ojp_heap_used_committed_vs_load.png`) shows mean lines without shaded bands to keep the two JVM series easy to compare on one view.
 - Boxplots, the error breakdown chart, and the SLO heatmap do not use mean ± 95% CI because they are showing raw repetition spread, composition, or pass/fail status rather than one averaged line per load.
@@ -21,6 +21,7 @@
 - `error_rate_vs_load.png`: the simplest reliability view. It shows when errors begin to grow with load.
 - `p95_latency_vs_load.png`: the main tail-latency view for normal service quality comparisons.
 - `p99_latency_vs_load.png`: a stricter tail-latency view that highlights worse outliers than p95.
+- `mean_failed_latency_vs_load.png`: shows how long failed requests took, which helps separate fast rejections from slow timeouts under load.
 - `p95_latency_boxplot.png`: shows the full repetition-to-repetition spread of p95 latency at each load, instead of only the average.
 - `p99_latency_boxplot.png`: shows the repetition spread for p99 latency so unstable tail behaviour is easier to spot.
 - `throughput_boxplot.png`: shows the repetition spread of successful throughput at each load.
