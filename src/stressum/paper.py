@@ -47,6 +47,7 @@ _SUMMARY_METRICS: dict[str, str] = {
     "error_rate_pct": "error_rate_pct",
     "p95_latency_ms": "p95_latency_ms",
     "p99_latency_ms": "p99_latency_ms",
+    "mean_failed_latency_ms": "mean_failed_latency_ms",
     "postgres_backend_connections": "postgres_backend_connections",
     "rps_per_db_connection": "rps_per_db_connection",
     "postgres_cpu_pct_avg": "postgres_cpu_pct_avg",
@@ -114,6 +115,12 @@ def write_paper_outputs(
             "p99_latency_ms",
             "p99 successful latency (ms)",
             f"p99 successful latency vs load — {scenario_title}",
+        ),
+        (
+            "mean_failed_latency_vs_load.png",
+            "mean_failed_latency_ms",
+            "Mean failed-request latency (ms)",
+            f"Mean failed-request latency vs load — {scenario_title}",
         ),
         (
             "postgres_backend_connections_vs_load.png",
@@ -424,6 +431,7 @@ def _paper_row_for_scenario(
         "error_rate_pct": agg.aggregate_error_rate * 100.0,
         "p95_latency_ms": p95_ms,
         "p99_latency_ms": p99_ms,
+        "mean_failed_latency_ms": _paper_mean_failed_latency_ms(scenario),
         "postgres_backend_connections": pg_backends,
         "rps_per_db_connection": (
             agg.total_successful_rps / pg_backends if pg_backends and pg_backends > 0 else math.nan
@@ -552,6 +560,26 @@ def _paper_latency_percentiles(scenario: dict[str, Any]) -> tuple[float, float]:
     if merged is not None:
         return float(merged.p95_ms), float(merged.p99_ms)
     return float(agg.median_p95_ms or 0.0), float(agg.median_p99_ms or 0.0)
+
+
+def _paper_mean_failed_latency_ms(scenario: dict[str, Any]) -> float:
+    agg = scenario["agg"]
+    weighted_sum = 0.0
+    failed_total = 0.0
+    for row in agg.rows:
+        mean_failed_ms = row.get("mean_failed_ms")
+        failed_requests = row.get("failed_requests")
+        if not isinstance(mean_failed_ms, (int, float)) or not isinstance(
+            failed_requests, (int, float)
+        ):
+            continue
+        if failed_requests <= 0:
+            continue
+        weighted_sum += float(mean_failed_ms) * float(failed_requests)
+        failed_total += float(failed_requests)
+    if failed_total > 0:
+        return weighted_sum / failed_total
+    return math.nan
 
 
 def _postgres_backend_connections(bundle: RunBundle) -> float:
@@ -1154,6 +1182,10 @@ def _paper_index_markdown() -> str:
             "- `error_rate_vs_load.png`: `error_rate_pct` from `summary_stats.csv`.",
             "- `p95_latency_vs_load.png`: `p95_latency_ms` from `summary_stats.csv`.",
             "- `p99_latency_vs_load.png`: `p99_latency_ms` from `summary_stats.csv`.",
+            (
+                "- `mean_failed_latency_vs_load.png`: `mean_failed_latency_ms` from "
+                "`summary_stats.csv`."
+            ),
             "- `p95_latency_boxplot.png`: `p95_latency_ms` from `repetition_values.csv`.",
             "- `p99_latency_boxplot.png`: `p99_latency_ms` from `repetition_values.csv`.",
             "- `throughput_boxplot.png`: `successful_rps` from `repetition_values.csv`.",
@@ -1223,6 +1255,7 @@ def _graph_rationale_markdown() -> str:
                 "- Mean ± 95% CI is used in these report line graphs: "
                 "`throughput_vs_load.png`, `error_rate_vs_load.png`, "
                 "`p95_latency_vs_load.png`, `p99_latency_vs_load.png`, "
+                "`mean_failed_latency_vs_load.png`, "
                 "`postgres_backend_connections_vs_load.png`, "
                 "`rps_per_db_connection_vs_load.png`, `postgres_cpu_vs_load.png`, "
                 "`postgres_rss_vs_load.png`, `proxy_tier_cpu_vs_load.png`, "
@@ -1274,6 +1307,10 @@ def _graph_rationale_markdown() -> str:
             (
                 "- `p99_latency_vs_load.png`: a stricter tail-latency view that highlights "
                 "worse outliers than p95."
+            ),
+            (
+                "- `mean_failed_latency_vs_load.png`: shows how long failed requests took, which "
+                "helps separate fast rejections from slow timeouts under load."
             ),
             (
                 "- `p95_latency_boxplot.png`: shows the full repetition-to-repetition spread of "
