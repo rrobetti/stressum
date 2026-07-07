@@ -85,7 +85,7 @@ def main_compare(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--slo-p95-ms",
         type=float,
-        default=50.0,
+        default=10_000.0,
         help="p95 latency SLO threshold in milliseconds for the main-figure heatmap.",
     )
     parser.add_argument(

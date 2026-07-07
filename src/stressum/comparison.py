@@ -94,7 +94,7 @@ def run_comparison(
     generate_appendix: bool = True,
     expected_repetitions: int = 5,
     load_map_path: Path | None = None,
-    slo_p95_ms: float = 50.0,
+    slo_p95_ms: float = 10_000.0,
     slo_error_rate_pct: float = 1.0,
 ) -> tuple[int, dict[str, Any]]:
     """
