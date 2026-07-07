@@ -13,7 +13,7 @@ in the experimental report along with a justification.
 
 > **Why were these specific values chosen?** The reasoning behind every numeric constant in this
 > guide — 16 client processes, 300 direct connections / 48 proxy backend connections, 63 RPS per
-> replica, 300 s warmup, 50 ms SLO, and all others — is documented in
+> replica, 300 s warmup, 10 s SLO, and all others — is documented in
 > **[PARAMETER_DECISIONS.md](PARAMETER_DECISIONS.md)**.
 
 **Core design constraints (non-negotiable):**
@@ -831,7 +831,7 @@ sweep (Test A) finds each SUT's true maximum.
 ### Maximum Sustainable Throughput Estimate
 
 **SUT-A:** DB CPU is the bottleneck; predicted MST is **10,000–20,000 TPS** before the SLO
-(p95 < 50 ms) is violated.
+(p95 < 10 s) is violated.
 
 **SUT-B / SUT-C:** Both DB CPU and the 48-connection pool may limit throughput. The lower bound
 of the connection-limited range (9,600 TPS) is below the lower bound of the DB CPU range
@@ -881,7 +881,7 @@ All test scenarios share the following global parameters unless explicitly overr
 | `seed`                   | 42                                                          | Reproducible parameter distribution                                         |
 | `useZipf`                | false                                                       | Uniform distribution (cache-warm scenario)                                  |
 | `metricsIntervalSeconds` | 1                                                           | Per-second timeseries resolution                                            |
-| `sloP95Ms`               | 50                                                          | SLO threshold: 50 ms at p95                                                 |
+| `sloP95Ms`               | 10000                                                       | Relaxed p95 latency SLO: 10 s for mixed OLTP + OLAP workloads              |
 | `errorRateThreshold`     | 0.001                                                       | Maximum tolerated error rate: 0.1 %                                         |
 | TLS / SSL                | **not used**                                                | All legs are plaintext; TLS overhead is excluded as a variable              |
 
@@ -889,6 +889,14 @@ The `warmupSeconds: 300` warm-up phase primes PostgreSQL's buffer pool and the J
 warm-up window is not included in any reported metric. The `repeatCount: 5` repetitions at each
 configuration point allow the median p95 to be computed, reducing the influence of a single
 anomalous run.
+
+The latency SLO is intentionally relaxed to **10 seconds at p95** because these reference
+benchmarks are not pure OLTP microbenchmarks. They combine short transactional requests with
+heavier OLAP-style work, so queueing and long-running analytical queries can legitimately stretch
+tail latency into the multi-second range even while the system is still delivering useful mixed
+work. A 50 ms p95 target would therefore measure the wrong thing: it would mostly flag the
+presence of analytical work rather than distinguish whether one topology handles the mixed workload
+better than another.
 
 ---
 
@@ -1110,7 +1118,7 @@ least every 60 seconds during the steady-state window.
 
 **Purpose:** Determine the maximum sustainable throughput (MST) for each SUT, defined as the
 highest per-client RPS level at which median p95 latency across all five repetitions remains
-below the SLO threshold (50 ms) and the error rate remains below 0.1 %.
+below the SLO threshold (10 s) and the error rate remains below 0.1 %.
 
 The sweep starts at 200 RPS aggregate (≈ 13 RPS per client) and increments by 15 % at each step
 until two consecutive steps violate the SLO. This test uses the same 16-client setup as the SUT
@@ -1217,7 +1225,7 @@ import pandas as pd
 df = pd.read_csv("results/tb-overload-sut-c/timeseries.csv")
 
 recovery_start_s = 600   # seconds from steady-state start (300 warmup + 300 overload)
-slo_p95_ms       = 50.0
+slo_p95_ms       = 10000.0
 
 recovery = df[df["wallTimeSeconds"] >= recovery_start_s].reset_index(drop=True)
 
@@ -1464,7 +1472,7 @@ For each SUT, plot the per-second p95 latency timeseries from `timeseries.csv`:
 - X axis: time (seconds), with t=0 at steady-state start
 - Y axis: p95 latency (ms)
 - Add vertical lines at t=300 (overload start), t=600 (recovery start)
-- Add horizontal dashed line at SLO threshold (50 ms)
+- Add horizontal dashed line at SLO threshold (10 s)
 - The recovery time for each SUT is the distance between t=600 and the point where the timeseries
   crosses back below the SLO line and remains there
 

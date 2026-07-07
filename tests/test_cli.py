@@ -164,6 +164,33 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert not (out / "comparison_postgres_process_rss.png").exists()
 
 
+def test_compare_uses_10_second_default_latency_slo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_comparison(config_path: Path, out_dir: Path, **kwargs: object) -> tuple[int, dict]:
+        captured["config_path"] = config_path
+        captured["out_dir"] = out_dir
+        captured.update(kwargs)
+        return 0, {}
+
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    monkeypatch.setattr("stressum.cli.run_comparison", fake_run_comparison)
+    cfg_path = tmp_path / "stressum-comparison.json"
+    cfg_path.write_text(
+        json.dumps({"runs": [{"path": "cmp-a"}, {"path": "cmp-b"}]}),
+        encoding="utf-8",
+    )
+
+    code = main([])
+
+    assert code == 0
+    assert captured["config_path"] == cfg_path.resolve()
+    assert captured["slo_p95_ms"] == 10_000.0
+
+
 def test_compare_writes_cross_technology_bar_charts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

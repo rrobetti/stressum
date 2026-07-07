@@ -222,7 +222,7 @@ Source: `LatencyRecorder.exportToLog()`, `HistogramAggregator.java`.
 | Metric             | Description                                                              | Collection method                                                    |
 | ------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
 | **p50** (median)   | Half of all requests finish faster than this.                            | `HdrHistogram.getValueAtPercentile(50.0)`                            |
-| **p95**            | 95 % of requests finish faster. Primary SLO threshold (default < 50 ms). | `HdrHistogram.getValueAtPercentile(95.0)`                            |
+| **p95**            | 95 % of requests finish faster. Primary latency SLO threshold (default < 10 s for mixed OLTP + OLAP workloads). | `HdrHistogram.getValueAtPercentile(95.0)`                            |
 | **p99**            | 99 % of requests finish faster. Indicates tail behaviour.                | `HdrHistogram.getValueAtPercentile(99.0)`                            |
 | **p99.9**          | 99.9 % of requests finish faster. Captures extreme outliers.             | `HdrHistogram.getValueAtPercentile(99.9)`                            |
 | **max**            | Worst single latency observed.                                           | `HdrHistogram.getMaxValue()`                                         |
