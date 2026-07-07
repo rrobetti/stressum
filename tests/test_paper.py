@@ -277,6 +277,7 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
         in rationale
     )
     assert "The shaded band above and below a line is the 95% confidence interval." in rationale
+    assert "the plotted value is not a per-node median." in rationale
     assert "`throughput_vs_load.png`: the top-level throughput view." in rationale
     assert "`ojp_heap_used_committed_vs_load.png`: keeps heap used and heap committed" in rationale
     summary_df = pd.read_csv(report / "summary_stats.csv")
@@ -373,8 +374,8 @@ def test_proxy_tier_report_plots_skip_hikaricp(
         summary_df,
         "proxy_tier_cpu_pct",
         tmp_path / "proxy_tier_cpu_vs_load.png",
-        ylabel="Proxy-tier CPU (%)",
-        title="Proxy-tier CPU vs load",
+        ylabel="Proxy-tier total CPU across nodes (%)",
+        title="Proxy-tier total CPU across nodes vs load",
         warnings=[],
         technologies=("OJP", "PgBouncer"),
     )
@@ -382,4 +383,6 @@ def test_proxy_tier_report_plots_skip_hikaricp(
     fig = captured["fig"]
     labels = fig.axes[0].get_legend_handles_labels()[1]
     assert labels == ["OJP", "PgBouncer"]
+    assert fig.axes[0].get_ylabel() == "Proxy-tier total CPU across nodes (%)"
+    assert fig.axes[0].get_title() == "Proxy-tier total CPU across nodes vs load"
     plt.close(fig)

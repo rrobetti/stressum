@@ -149,14 +149,14 @@ def write_paper_outputs(
         (
             "proxy_tier_cpu_vs_load.png",
             "proxy_tier_cpu_pct",
-            "Proxy-tier CPU (%)",
-            f"Proxy-tier CPU vs load — {scenario_title}",
+            "Proxy-tier total CPU across nodes (%)",
+            f"Proxy-tier total CPU across nodes vs load — {scenario_title}",
         ),
         (
             "proxy_tier_rss_vs_load.png",
             "proxy_tier_rss_mib",
-            "Proxy-tier RSS (MiB)",
-            f"Proxy-tier RSS vs load — {scenario_title}",
+            "Proxy-tier total RSS across nodes (MiB)",
+            f"Proxy-tier total RSS across nodes vs load — {scenario_title}",
         ),
     ):
         out = out_dir / filename
@@ -1203,8 +1203,16 @@ def _paper_index_markdown() -> str:
             ),
             "- `postgres_cpu_vs_load.png`: `postgres_cpu_pct_avg` from `summary_stats.csv`.",
             "- `postgres_rss_vs_load.png`: `postgres_rss_mib` from `summary_stats.csv`.",
-            "- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from `summary_stats.csv`.",
-            "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.",
+            (
+                "- `proxy_tier_cpu_vs_load.png`: `proxy_tier_cpu_pct` from "
+                "`summary_stats.csv` (per-run time-aligned sum across proxy/LB nodes; "
+                "report line = mean across repetitions)."
+            ),
+            (
+                "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from "
+                "`summary_stats.csv` (per-run time-aligned sum across proxy/LB nodes; "
+                "report line = mean across repetitions)."
+            ),
             (
                 "- `ojp_heap_used_committed_vs_load.png`: `ojp_heap_used_mib` and "
                 "`ojp_heap_committed_mib` from `summary_stats.csv` when OJP JVM "
@@ -1288,6 +1296,12 @@ def _graph_rationale_markdown() -> str:
                 "keeps the repetition-level raw values used by the boxplots and downstream "
                 "analysis."
             ),
+            (
+                "- For `proxy_tier_cpu_vs_load.png` and `proxy_tier_rss_vs_load.png`, each run "
+                "first time-aligns the proxy/LB node metrics and sums them across the tier. The "
+                "report line then shows the mean of those per-run totals across repetitions, so "
+                "the plotted value is not a per-node median."
+            ),
             "",
             "## Core comparison figures",
             "",
@@ -1344,12 +1358,12 @@ def _graph_rationale_markdown() -> str:
                 "operating system."
             ),
             (
-                "- `proxy_tier_cpu_vs_load.png`: shows CPU cost in the proxy/application tier "
-                "for technologies that actually have that tier."
+                "- `proxy_tier_cpu_vs_load.png`: shows total CPU cost across the "
+                "proxy/application-tier nodes for technologies that actually have that tier."
             ),
             (
-                "- `proxy_tier_rss_vs_load.png`: shows the proxy/application-tier RSS memory "
-                "footprint for technologies that actually have that tier."
+                "- `proxy_tier_rss_vs_load.png`: shows total RSS memory footprint across the "
+                "proxy/application-tier nodes for technologies that actually have that tier."
             ),
             (
                 "- `error_type_breakdown.png`: groups failures by kind so total error rate can "
