@@ -891,8 +891,12 @@ def _plot_ojp_heap_combined(
     warnings: list[str],
 ) -> bool:
     metric_specs = (
-        ("ojp_heap_used_mib", "Heap used", "-"),
-        ("ojp_heap_committed_mib", "Heap committed", "--"),
+        ("ojp_heap_used_mib", "Heap used (sum of per-node medians)", "-"),
+        (
+            "ojp_heap_committed_mib",
+            "Heap committed (sum of per-node medians)",
+            "--",
+        ),
     )
     metric_frames = {name: _ojp_metric_df(summary_df, name) for name, _, _ in metric_specs}
     missing = [name for name, df in metric_frames.items() if df.empty]
@@ -920,7 +924,7 @@ def _plot_ojp_heap_combined(
     ax.set_xticks(x_values)
     ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Load (per-node RPS / aggregate RPS)")
-    ax.set_ylabel("Aggregate OJP heap (MiB)")
+    ax.set_ylabel("Cluster OJP heap (MiB, sum of per-node medians)")
     ax.set_title(title)
     ax.legend(loc="best")
     _save_plot(fig, out)
@@ -1203,8 +1207,8 @@ def _paper_index_markdown() -> str:
             "- `proxy_tier_rss_vs_load.png`: `proxy_tier_rss_mib` from `summary_stats.csv`.",
             (
                 "- `ojp_heap_used_committed_vs_load.png`: `ojp_heap_used_mib` and "
-                "`ojp_heap_committed_mib` from "
-                "`summary_stats.csv` when OJP JVM heap data exists."
+                "`ojp_heap_committed_mib` from `summary_stats.csv` when OJP JVM "
+                "heap data exists (cluster value = sum of per-node medians)."
             ),
             (
                 "- `ojp_heap_utilisation_vs_load.png`: "
@@ -1371,7 +1375,7 @@ def _graph_rationale_markdown() -> str:
             (
                 "- `ojp_heap_used_committed_vs_load.png`: keeps heap used and heap committed on "
                 "the same graph so the gap between live object demand and JVM reserved space is "
-                "easy to see."
+                "easy to see. Each plotted value is the cluster total (sum of per-node medians)."
             ),
             (
                 "- `ojp_heap_utilisation_vs_load.png`: shows how close OJP is to the "
