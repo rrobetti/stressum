@@ -68,6 +68,7 @@ def test_proxy_tier_cpu_aligned_peak(tmp_path: Path) -> None:
     assert summary is not None
     assert summary["service_cpu_aligned_peak_pct"] == 55.0
     assert summary["service_cpu_legacy_peak_sum_pct"] == 55.0
+    assert summary["service_cpu_mean_pct"] == 35.0
     assert summary["host_cpu_aligned_peak_pct"] == 70.0
 
 
@@ -183,6 +184,7 @@ def test_proxy_tier_rss_summary(tmp_path: Path) -> None:
     summary = proxy_tier_rss_summary(bundle)
     assert summary is not None
     assert summary["rss_mb_aligned_peak"] == 270.0
+    assert summary["rss_mb_mean"] == 225.0
 
 
 def test_bench_jvm_cpu_summary_sums_app_cpu_median() -> None:
