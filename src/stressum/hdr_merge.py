@@ -48,15 +48,16 @@ def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
     return merged
 
 
-def _infer_ns_to_ms_divisor(hist: HdrHistogram, ref_p50_ms: float | None) -> float:
-    """Map raw histogram units to milliseconds using summary.json p50 as anchor."""
+def _infer_ns_to_ms_divisor(hist: HdrHistogram) -> float:
+    """Infer raw histogram units and return the divisor to convert to milliseconds.
+
+    Heuristic: raw p50 > 500_000 → nanoseconds (÷1e6), > 500 → microseconds (÷1e3),
+    otherwise already milliseconds (÷1.0).  This correctly handles the common case
+    where Java bench records latency in nanoseconds.  Edge case: if a future bench
+    records in µs and p50 < 500 µs the heuristic will mis-classify — document and
+    validate unit choice before adding sub-500-µs benchmarks.
+    """
     raw_p50 = float(hist.get_value_at_percentile(50.0))
-    if ref_p50_ms and ref_p50_ms > 0 and raw_p50 > 0:
-        for div in (1.0, 1e3, 1e6):
-            scaled = raw_p50 / div
-            ratio = scaled / ref_p50_ms
-            if 0.2 <= ratio <= 5.0:
-                return div
     if raw_p50 > 500_000:
         return 1e6
     if raw_p50 > 500:
@@ -68,18 +69,20 @@ def _infer_ns_to_ms_divisor(hist: HdrHistogram, ref_p50_ms: float | None) -> flo
 class MergedLatency:
     """Run-level latency after merging HDR logs (values reported in ms)."""
 
+    p25_ms: float
     p50_ms: float
+    p75_ms: float
+    p90_ms: float
     p95_ms: float
     p99_ms: float
     p999_ms: float
     unit_divisor: float
+    total_count: int
     hdr_paths_used: tuple[str, ...]
 
 
 def merge_run_histogram(
     hdr_paths: list[Path],
-    *,
-    ref_p50_ms: float | None,
 ) -> tuple[MergedLatency | None, list[str]]:
     """
     Merge all decodable histogram logs under one run into a single distribution.
@@ -112,25 +115,22 @@ def merge_run_histogram(
     if merged is None or merged.get_total_count() == 0:
         return None, warnings
 
-    div = _infer_ns_to_ms_divisor(merged, ref_p50_ms)
-    if ref_p50_ms and ref_p50_ms > 0:
-        raw = float(merged.get_value_at_percentile(50.0))
-        if abs(raw / div - ref_p50_ms) / ref_p50_ms > 0.25:
-            warnings.append(
-                "Merged HDR p50 differs from summary.json median p50 by >25%; "
-                "check histogram units vs summary latencyMs."
-            )
+    div = _infer_ns_to_ms_divisor(merged)
 
     def q(pct: float) -> float:
         return float(merged.get_value_at_percentile(pct)) / div
 
     return (
         MergedLatency(
+            p25_ms=q(25.0),
             p50_ms=q(50.0),
+            p75_ms=q(75.0),
+            p90_ms=q(90.0),
             p95_ms=q(95.0),
             p99_ms=q(99.0),
             p999_ms=q(99.9),
             unit_divisor=div,
+            total_count=int(merged.get_total_count()),
             hdr_paths_used=tuple(used),
         ),
         warnings,
