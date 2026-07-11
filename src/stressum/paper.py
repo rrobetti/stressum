@@ -712,6 +712,7 @@ def _plot_metric_line(
         else _ordered_technologies(metric_df["technology"].tolist())
     )
     any_series = False
+    range_label_added = False
     for technology in ordered_technologies:
         tech_df = metric_df.loc[metric_df["technology"] == technology].sort_values(
             "aggregate_rps"
@@ -722,11 +723,13 @@ def _plot_metric_line(
         any_series = True
         xs = tech_df["aggregate_rps"].to_numpy(dtype=float)
         ys = tech_df["mean"].to_numpy(dtype=float)
-        ci_low = tech_df["ci95_low"].to_numpy(dtype=float)
-        ci_high = tech_df["ci95_high"].to_numpy(dtype=float)
+        range_low = tech_df["min"].to_numpy(dtype=float)
+        range_high = tech_df["max"].to_numpy(dtype=float)
         color = _paper_color(technology)
         ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label=technology)
-        ax.fill_between(xs, ci_low, ci_high, color=color, alpha=0.18)
+        band_label = "Min/Max Range" if not range_label_added else None
+        ax.fill_between(xs, range_low, range_high, color=color, alpha=0.18, label=band_label)
+        range_label_added = True
     if not any_series:
         _render_placeholder(ax, title, "No data available")
         _save_plot(fig, out)
@@ -774,8 +777,8 @@ def _plot_attempted_completed_chart(
             if metric_name != "offered_rps":
                 ax.fill_between(
                     xs,
-                    tech_df["ci95_low"].to_numpy(dtype=float),
-                    tech_df["ci95_high"].to_numpy(dtype=float),
+                    tech_df["min"].to_numpy(dtype=float),
+                    tech_df["max"].to_numpy(dtype=float),
                     color=color,
                     alpha=0.18,
                 )
@@ -868,8 +871,8 @@ def _plot_ojp_heap_metric_line(
     ax.plot(xs, ys, marker="o", linewidth=1.4, color=color, label="OJP")
     ax.fill_between(
         xs,
-        tech_df["ci95_low"].to_numpy(dtype=float),
-        tech_df["ci95_high"].to_numpy(dtype=float),
+        tech_df["min"].to_numpy(dtype=float),
+        tech_df["max"].to_numpy(dtype=float),
         color=color,
         alpha=0.18,
     )
@@ -1252,19 +1255,19 @@ def _graph_rationale_markdown() -> str:
                 "that load level."
             ),
             (
-                "- The shaded band above and below a line is the 95% confidence interval. In "
-                "simple words, it shows the range where the true average is likely to sit "
-                "based on the five repeated runs."
+                "- The shaded band above and below a line is the Min/Max Range: the absolute "
+                "minimum and maximum values observed across the five repeated runs at that "
+                "load level."
             ),
             (
                 "- Narrower shaded bands mean the repetitions were more consistent. Wider "
                 "bands mean the result moved around more from run to run."
             ),
             "",
-            "## Where mean ± 95% CI is used",
+            "## Where mean with Min/Max Range is used",
             "",
             (
-                "- Mean ± 95% CI is used in these report line graphs: "
+                "- Mean with Min/Max Range is used in these report line graphs: "
                 "`throughput_vs_load.png`, `error_rate_vs_load.png`, "
                 "`p95_latency_vs_load.png`, `p99_latency_vs_load.png`, "
                 "`mean_failed_latency_vs_load.png`, "
@@ -1274,9 +1277,9 @@ def _graph_rationale_markdown() -> str:
                 "`proxy_tier_rss_vs_load.png`, and `ojp_heap_utilisation_vs_load.png`."
             ),
             (
-                "- Mean ± 95% CI is also used in the measured panels of "
+                "- Mean with Min/Max Range is also used in the measured panels of "
                 "`attempted_completed_success_error_rps.png`: attempted RPS, successful RPS, "
-                "and error RPS. The offered RPS panel does not use a confidence interval "
+                "and error RPS. The offered RPS panel does not show a shaded band "
                 "because it is the configured target load, not an observed metric with run to "
                 "run variation."
             ),
@@ -1286,9 +1289,9 @@ def _graph_rationale_markdown() -> str:
                 "bands to keep the two JVM series easy to compare on one view."
             ),
             (
-                "- Boxplots, the error breakdown chart, and the SLO heatmap do not use mean ± "
-                "95% CI because they are showing raw repetition spread, composition, or pass/"
-                "fail status rather than one averaged line per load."
+                "- Boxplots, the error breakdown chart, and the SLO heatmap do not use mean "
+                "with Min/Max Range because they are showing raw repetition spread, "
+                "composition, or pass/fail status rather than one averaged line per load."
             ),
             (
                 "- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% "
