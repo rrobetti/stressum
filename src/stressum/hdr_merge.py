@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,15 @@ from hdrh.log import HistogramLogReader
 
 # Java bench typically records latency in nanoseconds (up to 60 s trackable).
 _REF_HIST = HdrHistogram(1, 60_000_000_000, 5)
+
+# Matches interval lines where any of the first three fields may be negative.
+# The standard hdrh regex only matches non-negative digits, so it silently
+# skips lines where the Java tool writes a sentinel Interval_Length of
+# -Long.MAX_VALUE (e.g. "9223372036854776.000,-9223372036854776.000,...").
+# Pattern: <ts>,<interval_len>,<max_value>,<base64_payload>
+_INTERVAL_LINE_RE = re.compile(
+    r"^-?[\d.]+,-?[\d.]+,-?[\d.]+,([A-Za-z0-9+/=]+)\s*$"
+)
 
 
 def _looks_like_histogram_log(path: Path) -> bool:
@@ -29,6 +39,30 @@ def _looks_like_histogram_log(path: Path) -> bool:
     return first[:1].isdigit() or first.startswith('"StartTimestamp"')
 
 
+def _decode_all_intervals(path: Path, merged: HdrHistogram) -> bool:
+    """Fallback parser: decode every interval line directly, including those
+    with negative timestamps/lengths that the hdrh HistogramLogReader skips."""
+    found_any = False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith('"'):
+            continue
+        m = _INTERVAL_LINE_RE.match(line)
+        if not m:
+            continue
+        payload = m.group(1)
+        try:
+            merged.decode_and_add(payload)
+            found_any = True
+        except Exception:
+            continue
+    return found_any
+
+
 def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
     if not _looks_like_histogram_log(path):
         return None
@@ -40,9 +74,15 @@ def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
             if nxt is None:
                 break
     except (OSError, ValueError, TypeError, IndexError):
-        return None
+        pass
     finally:
         reader.close()
+    # The standard reader silently skips interval lines whose Interval_Length
+    # field is negative (a Java sentinel for "cumulative total" histograms).
+    # Fall back to direct line-by-line decoding when the reader found nothing.
+    if merged.get_total_count() == 0:
+        if not _decode_all_intervals(path, merged):
+            return None
     if merged.get_total_count() == 0:
         return None
     return merged
