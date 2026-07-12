@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from hdrh.histogram import HdrHistogram
-from hdrh.log import HistogramLogReader
 
 # Java bench typically records latency in nanoseconds.  Use 1 hour (3.6 T ns)
 # as the upper bound so that production runs with timeout-induced outliers
 # (> 60 s) are captured rather than causing an IndexError in HdrHistogram.add().
 _MAX_TRACKABLE_NS = 3_600_000_000_000  # 1 hour in nanoseconds
-_REF_HIST = HdrHistogram(1, _MAX_TRACKABLE_NS, 3)
+
+# The hdrh HistogramLogReader uses re.compile(r'([\d\.]*),([\d\.]*),([\d\.]*),(.*)')
+# which does NOT match negative numbers.  Java benches commonly write a "catch-all"
+# interval with Interval_Length = -Long.MAX_VALUE/1000, causing the hdrh reader to
+# silently skip the only data line and return total_count=0.  We parse the lines
+# ourselves to avoid this limitation.
+_INTERVAL_RE = re.compile(r"[-\d\.]+,[-\d\.]+,[-\d\.]+,(.*)")
 
 
 def _looks_like_histogram_log(path: Path) -> bool:
@@ -36,16 +41,23 @@ def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
     if not _looks_like_histogram_log(path):
         return None
     merged = HdrHistogram(1, _MAX_TRACKABLE_NS, 3)
-    reader = HistogramLogReader(str(path), _REF_HIST)
     try:
-        while True:
-            nxt = reader.add_next_interval_histogram(merged, 0.0, sys.maxsize, True)
-            if nxt is None:
-                break
-    except (OSError, ValueError, TypeError, IndexError):
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return None
-    finally:
-        reader.close()
+    for line in text.splitlines():
+        line = line.strip()
+        # Skip comment lines, the CSV header, and empty lines
+        if not line or line.startswith("#") or line.startswith('"'):
+            continue
+        m = _INTERVAL_RE.match(line)
+        if not m:
+            continue
+        payload = m.group(1)
+        try:
+            merged.decode_and_add(payload)
+        except Exception:  # noqa: BLE001
+            pass  # skip undecodable intervals; caller checks total_count
     if merged.get_total_count() == 0:
         return None
     return merged
