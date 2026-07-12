@@ -135,14 +135,20 @@ def run_comparison(
         proxy_cpu = proxy_tier_cpu_summary(bundle)
         postgres_process = postgres_process_summary(bundle)
         total_footprint = total_resource_footprint_summary(bundle)
-        ref_p50 = agg.median_p50_ms
         if bundle.hdr_paths:
             print(
                 f"    Merging HDR histograms ({len(bundle.hdr_paths)} file(s))...",
                 flush=True,
             )
-        merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
-        latency_source = "hdr_merged" if merged is not None else "summary_json_median"
+        merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths)
+        if merged is None:
+            print(
+                f"Missing HDR histogram data for run '{label}' ({run_path}); "
+                "all runs must have HDR .hlog files.",
+                file=sys.stderr,
+            )
+            return 2, {}
+        latency_source = "hdr_merged"
 
         ol_any, ol_missed, ol_delay = _open_loop_totals(bundle)
         meta = bundle.metadata or {}
@@ -210,14 +216,17 @@ def run_comparison(
         scenario_meta["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
         scenario_meta["total_rss_mb_mean"] = total_footprint["total_rss_mb_mean"]
         scenario_meta["total_rss_mb_p95"] = total_footprint["total_rss_mb_p95"]
-        if merged is not None:
-            scenario_meta["merged_latency_ms"] = {
-                "p50": merged.p50_ms,
-                "p95": merged.p95_ms,
-                "p99": merged.p99_ms,
-                "p999": merged.p999_ms,
-                "unit_divisor": merged.unit_divisor,
-            }
+        scenario_meta["merged_latency_ms"] = {
+            "p25": merged.p25_ms,
+            "p50": merged.p50_ms,
+            "p75": merged.p75_ms,
+            "p90": merged.p90_ms,
+            "p95": merged.p95_ms,
+            "p99": merged.p99_ms,
+            "p999": merged.p999_ms,
+            "unit_divisor": merged.unit_divisor,
+            "total_count": merged.total_count,
+        }
 
         scenarios_payload.append(scenario_meta)
 
@@ -232,18 +241,11 @@ def run_comparison(
         row["comparison_label"] = label
         row["comparison_path_resolved"] = str(run_path)
         row["latency_percentiles_source"] = latency_source
-        if merged is not None:
-            row["merged_p50_ms"] = merged.p50_ms
-            row["merged_p95_ms"] = merged.p95_ms
-            row["merged_p99_ms"] = merged.p99_ms
-            row["merged_p999_ms"] = merged.p999_ms
-            row["hdr_unit_divisor"] = merged.unit_divisor
-        else:
-            row["merged_p50_ms"] = ""
-            row["merged_p95_ms"] = ""
-            row["merged_p99_ms"] = ""
-            row["merged_p999_ms"] = ""
-            row["hdr_unit_divisor"] = ""
+        row["merged_p50_ms"] = merged.p50_ms
+        row["merged_p95_ms"] = merged.p95_ms
+        row["merged_p99_ms"] = merged.p99_ms
+        row["merged_p999_ms"] = merged.p999_ms
+        row["hdr_unit_divisor"] = merged.unit_divisor
         scenario_rows.append(row)
 
         scenarios_plot.append(

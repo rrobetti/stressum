@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import pytest
 
 from stressum.aggregate import aggregate_bundle, postgres_process_summary, proxy_tier_cpu_summary
 from stressum.cli import main
+from stressum.hdr_merge import merge_run_histogram
 from stressum.load import load_run_bundle
 from stressum.paper import (
     _paper_color,
@@ -27,13 +29,29 @@ def _latest_comparison_out(fake_root: Path) -> Path:
     return outs[-1]
 
 
+def _write_single_interval_hlog(path: Path) -> None:
+    from hdrh.histogram import HdrHistogram
+    from hdrh.log import HistogramLogWriter
+
+    h = HdrHistogram(1, 60_000_000_000, 5)
+    for ns in (1_000_000, 2_000_000, 3_000_000):
+        h.record_value(ns)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        w = HistogramLogWriter(f)
+        w.output_log_format_version()
+        w.output_legend()
+        w.output_interval_histogram(h, 0.0, 1.0, 1_000_000.0)
+
+
 def _scenario_entry(run_dir: Path, label: str) -> dict[str, object]:
     bundle = load_run_bundle(run_dir)
+    merged, _ = merge_run_histogram(bundle.hdr_paths)
     return {
         "label": label,
         "bundle": bundle,
         "agg": aggregate_bundle(bundle),
-        "merged": None,
+        "merged": merged,
         "proxy_cpu": proxy_tier_cpu_summary(bundle),
         "postgres_process": postgres_process_summary(bundle),
         "total_footprint": None,
@@ -86,6 +104,7 @@ def test_paper_repetition_grouping_and_ci(tmp_path: Path) -> None:
             summary["attemptedRps"] = 50.0
             summary["errorThroughputRps"] = 5.0
             summary_path.write_text(json.dumps(summary), encoding="utf-8")
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
         scenarios.append(_scenario_entry(run_dir, f"Hikari {chr(ord('A') + index)}"))
 
     repetition_df, warnings = _paper_repetition_dataframe(
@@ -106,6 +125,13 @@ def test_paper_repetition_grouping_and_ci(tmp_path: Path) -> None:
     assert successful["stddev"] > 0.0
     assert successful["ci95_high"] > successful["mean"]
     assert successful["ci95_low"] < successful["mean"]
+    # HDR-derived latency metrics have ci95 set to NaN (no distributional CI)
+    p95_row = summary_df.loc[summary_df["metric_name"] == "p95_latency_ms"].iloc[0]
+    assert math.isnan(p95_row["ci95_low"])
+    assert math.isnan(p95_row["ci95_high"])
+    p99_row = summary_df.loc[summary_df["metric_name"] == "p99_latency_ms"].iloc[0]
+    assert math.isnan(p99_row["ci95_low"])
+    assert math.isnan(p99_row["ci95_high"])
     mean_failed = summary_df.loc[summary_df["metric_name"] == "mean_failed_latency_ms"].iloc[0]
     assert pytest.approx(mean_failed["mean"], rel=1e-6) == ((5.0 * 10.0 + 6.0 * 20.0) / 30.0)
 
@@ -121,6 +147,7 @@ def test_paper_aggregates_ojp_heap_metrics_and_summary_stats(tmp_path: Path) -> 
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             summary["runInfo"]["targetRps"] = 100
             summary_path.write_text(json.dumps(summary), encoding="utf-8")
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
         _write_ojp_jvm_metrics(
             run_dir,
             xmx="256m",
@@ -166,8 +193,24 @@ def test_paper_detects_missing_load_metadata(tmp_path: Path) -> None:
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         summary["runInfo"]["targetRps"] = None
         summary_path.write_text(json.dumps(summary), encoding="utf-8")
+        _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
     scenario = _scenario_entry(run_dir, "Hikari A")
     with pytest.raises(ValueError, match="Could not infer load metadata"):
+        _paper_repetition_dataframe([scenario], load_map={}, expected_repetitions=5)
+
+
+def test_paper_missing_hdr_raises_value_error(tmp_path: Path) -> None:
+    run_dir = tmp_path / "no-hdr"
+    shutil.copytree(FIXTURE, run_dir)
+    for replica_name in ("replica-0", "replica-1"):
+        summary_path = run_dir / replica_name / "summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        summary["runInfo"]["targetRps"] = 100
+        summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    # Deliberately do NOT write any .hlog files — merged will be None
+    scenario = _scenario_entry(run_dir, "Hikari A")
+    assert scenario["merged"] is None
+    with pytest.raises(ValueError, match="missing HDR histogram data"):
         _paper_repetition_dataframe([scenario], load_map={}, expected_repetitions=5)
 
 
@@ -187,6 +230,7 @@ def test_compare_generates_report_and_debug_outputs(
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 summary["runInfo"]["targetRps"] = 100
                 summary_path.write_text(json.dumps(summary), encoding="utf-8")
+                _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
             labels.append(
                 {
                     "path": run_name,
@@ -245,6 +289,7 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             summary["runInfo"]["targetRps"] = 100
             summary_path.write_text(json.dumps(summary), encoding="utf-8")
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
         _write_ojp_jvm_metrics(
             run_dir,
             node_specs={
@@ -298,11 +343,13 @@ def test_compare_handles_missing_metrics_safely(
     run_b = tmp_path / "hb"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
-    for path in (run_a, run_b):
-        pg_metrics = path / "node_metrics" / "pg_metrics.csv"
+    for run_dir in (run_a, run_b):
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
+        pg_metrics = run_dir / "node_metrics" / "pg_metrics.csv"
         if pg_metrics.exists():
             pg_metrics.unlink()
-        db_proc = path / "node_metrics" / "db" / "db_proc_metrics.csv"
+        db_proc = run_dir / "node_metrics" / "db" / "db_proc_metrics.csv"
         if db_proc.exists():
             db_proc.unlink()
     (tmp_path / "stressum-comparison.json").write_text(

@@ -91,18 +91,13 @@ def write_paper_outputs(
     }
     scenario_title = _scenario_title(repetition_df)
 
+    # Strip-plot charts: per-run dots + median line (HDR-derived latency and throughput)
     for filename, metric, ylabel, title in (
         (
             "throughput_vs_load.png",
             "successful_rps",
             "Successful throughput (RPS)",
             f"Successful throughput vs load — {scenario_title}",
-        ),
-        (
-            "error_rate_vs_load.png",
-            "error_rate_pct",
-            "Error rate (%)",
-            f"Error rate vs load — {scenario_title}",
         ),
         (
             "p95_latency_vs_load.png",
@@ -115,6 +110,26 @@ def write_paper_outputs(
             "p99_latency_ms",
             "p99 successful latency (ms)",
             f"p99 successful latency vs load — {scenario_title}",
+        ),
+    ):
+        out = out_dir / filename
+        _plot_metric_strip(
+            repetition_df,
+            metric,
+            out,
+            ylabel=ylabel,
+            title=title,
+            warnings=warnings,
+        )
+        paths[out.relative_to(out_dir).as_posix()] = out
+
+    # Mean ± CI line charts for remaining metrics
+    for filename, metric, ylabel, title in (
+        (
+            "error_rate_vs_load.png",
+            "error_rate_pct",
+            "Error rate (%)",
+            f"Error rate vs load — {scenario_title}",
         ),
         (
             "mean_failed_latency_vs_load.png",
@@ -556,10 +571,13 @@ def _load_level_from_mapping(value: Any, *, count: int) -> dict[str, float | str
 
 def _paper_latency_percentiles(scenario: dict[str, Any]) -> tuple[float, float]:
     merged = scenario.get("merged")
-    agg = scenario["agg"]
-    if merged is not None:
-        return float(merged.p95_ms), float(merged.p99_ms)
-    return float(agg.median_p95_ms or 0.0), float(agg.median_p99_ms or 0.0)
+    if merged is None:
+        label = scenario.get("label", "<unknown>")
+        raise ValueError(
+            f"Run '{label}' is missing HDR histogram data. "
+            "All runs must provide HDR .hlog files for paper latency metrics."
+        )
+    return float(merged.p95_ms), float(merged.p99_ms)
 
 
 def _paper_mean_failed_latency_ms(scenario: dict[str, Any]) -> float:
@@ -622,6 +640,9 @@ def _paper_color(technology: str) -> str:
     return _PAPER_COLORS.get(technology, "gray")
 
 
+_HDR_LATENCY_METRICS = frozenset({"p95_latency_ms", "p99_latency_ms"})
+
+
 def _summary_stats_dataframe(repetition_df: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     group_cols = ["scenario", "workload", "technology", "per_node_rps", "aggregate_rps"]
@@ -639,6 +660,15 @@ def _summary_stats_dataframe(repetition_df: pd.DataFrame) -> pd.DataFrame:
             max_value = float(values.max())
             stddev = float(values.std(ddof=1)) if len(values) > 1 else 0.0
             margin = _T_95_DF4 * stddev / math.sqrt(len(values)) if len(values) > 1 else 0.0
+            # CI is not meaningful for HDR-derived latency percentiles (n=5 per-run
+            # values are not exchangeable draws from a normal distribution).  Set
+            # ci95_low/ci95_high to NaN for those metrics; keep CI for the others.
+            if metric_name in _HDR_LATENCY_METRICS:
+                ci_low: float = math.nan
+                ci_high: float = math.nan
+            else:
+                ci_low = mean - margin
+                ci_high = mean + margin
             rows.append(
                 {
                     **base,
@@ -649,8 +679,8 @@ def _summary_stats_dataframe(repetition_df: pd.DataFrame) -> pd.DataFrame:
                     "stddev": stddev,
                     "min": min_value,
                     "max": max_value,
-                    "ci95_low": mean - margin,
-                    "ci95_high": mean + margin,
+                    "ci95_low": ci_low,
+                    "ci95_high": ci_high,
                 }
             )
     out = pd.DataFrame(rows)
@@ -685,6 +715,101 @@ def _metric_ticks(metric_df: pd.DataFrame) -> tuple[list[float], list[str]]:
         per_node = float(subset["per_node_rps"].iloc[0])
         labels.append(f"{per_node:g}/node\n{x_value:g} agg")
     return x_values, labels
+
+
+def _plot_metric_strip(
+    repetition_df: pd.DataFrame,
+    metric_name: str,
+    out: Path,
+    *,
+    ylabel: str,
+    title: str,
+    warnings: list[str],
+) -> None:
+    """Strip plot: individual per-run dots at each load level, with a median line.
+
+    Each dot is one repetition's value. The line connects the per-technology medians
+    across load levels. No confidence interval is shown — the n=5 individual values
+    speak for themselves.
+    """
+    if repetition_df.empty or metric_name not in repetition_df.columns:
+        fig, ax = plt.subplots(figsize=(8.8, 4.3))
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+
+    col = pd.to_numeric(repetition_df[metric_name], errors="coerce")
+    valid_df = repetition_df.loc[col.notna()].copy()
+    valid_df[metric_name] = col.loc[col.notna()]
+    if valid_df.empty:
+        fig, ax = plt.subplots(figsize=(8.8, 4.3))
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+
+    ordered_technologies = _ordered_technologies(valid_df["technology"].tolist())
+    x_values = sorted(valid_df["aggregate_rps"].dropna().unique().tolist())
+    x_span = (x_values[-1] - x_values[0]) if len(x_values) > 1 else max(x_values[0], 1.0)
+    n_tech = len(ordered_technologies)
+    jitter_step = x_span * 0.012
+    offsets = [jitter_step * (i - (n_tech - 1) / 2.0) for i in range(n_tech)]
+
+    # Build tick labels using per_node_rps
+    tick_labels: list[str] = []
+    for xv in x_values:
+        subset = valid_df.loc[valid_df["aggregate_rps"] == xv]
+        per_node = float(subset["per_node_rps"].iloc[0])
+        tick_labels.append(f"{per_node:g}/node\n{xv:g} agg")
+
+    fig, ax = plt.subplots(figsize=(8.8, 4.3))
+    any_series = False
+    for i, technology in enumerate(ordered_technologies):
+        tech_df = valid_df.loc[valid_df["technology"] == technology]
+        if tech_df.empty:
+            warnings.append(f"Missing {metric_name} series for {technology}; skipping")
+            continue
+        any_series = True
+        color = _paper_color(technology)
+        offset = offsets[i]
+        medians_x: list[float] = []
+        medians_y: list[float] = []
+        for xv in x_values:
+            group = tech_df.loc[tech_df["aggregate_rps"] == xv, metric_name]
+            if group.empty:
+                continue
+            dot_x = xv + offset
+            ax.scatter(
+                [dot_x] * len(group),
+                group.tolist(),
+                color=color,
+                alpha=0.65,
+                s=28,
+                zorder=3,
+            )
+            medians_x.append(dot_x)
+            medians_y.append(float(group.median()))
+        if medians_x:
+            ax.plot(
+                medians_x,
+                medians_y,
+                marker="D",
+                markersize=5,
+                linewidth=1.4,
+                color=color,
+                label=technology,
+                zorder=4,
+            )
+    if not any_series:
+        _render_placeholder(ax, title, "No data available")
+        _save_plot(fig, out)
+        return
+    ax.set_xticks(x_values)
+    ax.set_xticklabels(tick_labels)
+    ax.set_xlabel("Load (per-node RPS / aggregate RPS)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(loc="best")
+    _save_plot(fig, out)
 
 
 def _plot_metric_line(
@@ -1180,15 +1305,24 @@ def _paper_index_markdown() -> str:
                 "- `repetition_values.csv`: one row per repetition/run with raw values used "
                 "for main figures."
             ),
-            "- `throughput_vs_load.png`: `successful_rps` from `summary_stats.csv`.",
+            (
+                "- `throughput_vs_load.png`: `successful_rps` from `repetition_values.csv` "
+                "(per-run dots with a median line; n=5 individual values per load level)."
+            ),
             (
                 "- `attempted_completed_success_error_rps.png`: `offered_rps`, "
                 "`attempted_rps`, `successful_rps`, and `error_rps` from "
                 "`summary_stats.csv`."
             ),
             "- `error_rate_vs_load.png`: `error_rate_pct` from `summary_stats.csv`.",
-            "- `p95_latency_vs_load.png`: `p95_latency_ms` from `summary_stats.csv`.",
-            "- `p99_latency_vs_load.png`: `p99_latency_ms` from `summary_stats.csv`.",
+            (
+                "- `p95_latency_vs_load.png`: `p95_latency_ms` from `repetition_values.csv` "
+                "(HDR-derived; per-run dots with a median line; no CI)."
+            ),
+            (
+                "- `p99_latency_vs_load.png`: `p99_latency_ms` from `repetition_values.csv` "
+                "(HDR-derived; per-run dots with a median line; no CI)."
+            ),
             (
                 "- `mean_failed_latency_vs_load.png`: `mean_failed_latency_ms` from "
                 "`summary_stats.csv`."
@@ -1248,7 +1382,35 @@ def _graph_rationale_markdown() -> str:
         [
             "# Graph rationale",
             "",
-            "## How to read the line graphs",
+            "## How to read the latency and throughput strip plots",
+            "",
+            (
+                "- `p95_latency_vs_load.png`, `p99_latency_vs_load.png`, and "
+                "`throughput_vs_load.png` use per-run strip plots instead of mean ± CI. "
+                "Each dot is the value from one of the n=5 repetitions. The line connects "
+                "the per-technology medians across load levels."
+            ),
+            (
+                "- All latency values in these charts are derived directly from merged "
+                "HdrHistogram logs. HDR histograms record every individual request latency "
+                "at full precision, so the per-run p95 and p99 values are exact percentiles "
+                "of the observed request population, not estimates."
+            ),
+            (
+                "- A t-distribution CI would assert that the five per-run HDR percentiles "
+                "are exchangeable draws from a normal population. That assumption is not "
+                "warranted: HDR-derived percentiles capture non-linear tail behaviour and "
+                "can be bimodal under load variation. Showing the n=5 raw values is more "
+                "honest and more informative."
+            ),
+            (
+                "- `summary_stats.csv` records mean, median, stddev, min, and max for all "
+                "metrics. The ci95_low and ci95_high columns are set to NaN for "
+                "p95_latency_ms and p99_latency_ms for the reason above. CI is retained "
+                "for throughput and other non-latency metrics."
+            ),
+            "",
+            "## How to read the other line graphs",
             "",
             (
                 "- The main line in a line graph is the mean across the five repetitions at "
@@ -1268,9 +1430,7 @@ def _graph_rationale_markdown() -> str:
             "",
             (
                 "- Mean with Min/Max Range is used in these report line graphs: "
-                "`throughput_vs_load.png`, `error_rate_vs_load.png`, "
-                "`p95_latency_vs_load.png`, `p99_latency_vs_load.png`, "
-                "`mean_failed_latency_vs_load.png`, "
+                "`error_rate_vs_load.png`, "
                 "`postgres_backend_connections_vs_load.png`, "
                 "`rps_per_db_connection_vs_load.png`, `postgres_cpu_vs_load.png`, "
                 "`postgres_rss_vs_load.png`, `proxy_tier_cpu_vs_load.png`, "
@@ -1294,12 +1454,6 @@ def _graph_rationale_markdown() -> str:
                 "composition, or pass/fail status rather than one averaged line per load."
             ),
             (
-                "- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% "
-                "confidence intervals for the report metrics, while `repetition_values.csv` "
-                "keeps the repetition-level raw values used by the boxplots and downstream "
-                "analysis."
-            ),
-            (
                 "- For `proxy_tier_cpu_vs_load.png` and `proxy_tier_rss_vs_load.png`, each run "
                 "first time-aligns the proxy/LB node metrics and sums them across the tier. The "
                 "report line then shows the mean of those per-run totals across repetitions, so "
@@ -1310,7 +1464,8 @@ def _graph_rationale_markdown() -> str:
             "",
             (
                 "- `throughput_vs_load.png`: the top-level throughput view. It shows how much "
-                "useful work each technology completes as load rises."
+                "useful work each technology completes as load rises. Each dot is one run; "
+                "the line is the per-technology median across runs."
             ),
             (
                 "- `attempted_completed_success_error_rps.png`: separates target load, work "
@@ -1323,11 +1478,12 @@ def _graph_rationale_markdown() -> str:
             ),
             (
                 "- `p95_latency_vs_load.png`: the main tail-latency view for normal service "
-                "quality comparisons."
+                "quality comparisons. Shows HDR-derived p95 per run (dots) with median line. "
+                "All latency values are exact percentiles from merged HdrHistogram logs."
             ),
             (
                 "- `p99_latency_vs_load.png`: a stricter tail-latency view that highlights "
-                "worse outliers than p95."
+                "worse outliers than p95. Uses the same per-run HDR strip-plot format."
             ),
             (
                 "- `mean_failed_latency_vs_load.png`: shows how long failed requests took, which "

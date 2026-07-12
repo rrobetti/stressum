@@ -75,6 +75,9 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     run_b = cfg_dir / "cmp-b"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    for run_dir in (run_a, run_b):
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(
         json.dumps({"runs": [{"path": "cmp-a"}, {"path": "cmp-b", "label": "B"}]}),
@@ -85,7 +88,7 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     out = _latest_comparison_out(tmp_path)
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     assert len(meta["scenarios"]) == 2
-    assert meta["scenarios"][0]["latency_percentiles_source"] == "summary_json_median"
+    assert meta["scenarios"][0]["latency_percentiles_source"] == "hdr_merged"
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
     assert (out / "report" / "summary_stats.csv").is_file()
@@ -201,6 +204,9 @@ def test_compare_writes_cross_technology_bar_charts(
     run_o = cfg_dir / "ojp-a"
     shutil.copytree(FIXTURE, run_h)
     shutil.copytree(FIXTURE, run_o)
+    for run_dir in (run_h, run_o):
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(
         json.dumps(
@@ -305,6 +311,9 @@ def test_compare_fairness_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     run_b = cfg_dir / "fb"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    for run_dir in (run_a, run_b):
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
     summ = json.loads((run_b / "replica-0" / "summary.json").read_text(encoding="utf-8"))
     summ["runInfo"]["workload"] = "W2_MIXED"
     (run_b / "replica-0" / "summary.json").write_text(json.dumps(summ), encoding="utf-8")
@@ -323,8 +332,10 @@ def test_compare_proxy_host_cpu_charts(tmp_path: Path, monkeypatch: pytest.Monke
     run_b = cfg_dir / "proxy-b"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
-    for run in (run_a, run_b):
-        proxy_dir = run / "node_metrics" / "proxy"
+    for run_dir in (run_a, run_b):
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
+        proxy_dir = run_dir / "node_metrics" / "proxy"
         proxy_dir.mkdir(parents=True, exist_ok=True)
         (proxy_dir / "node-a_proc_metrics.csv").write_text(
             "timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n"
@@ -357,7 +368,10 @@ def test_compare_report_only_writes_report_folder(
 ) -> None:
     monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
     for name in ("ha", "hb"):
-        shutil.copytree(FIXTURE, tmp_path / name)
+        run_dir = tmp_path / name
+        shutil.copytree(FIXTURE, run_dir)
+        for replica_name in ("replica-0", "replica-1"):
+            _write_single_interval_hlog(run_dir / replica_name / "latency.hlog")
     (tmp_path / "stressum-comparison.json").write_text(
         json.dumps(
             {
@@ -374,3 +388,21 @@ def test_compare_report_only_writes_report_folder(
     assert (out / "report" / "summary_stats.csv").is_file()
     assert (out / "report" / "throughput_vs_load.png").is_file()
     assert not (out / "debug").exists()
+
+
+def test_compare_fails_with_missing_hdr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """comparison.py must return exit code 2 when any run has no HDR data."""
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    run_a = tmp_path / "with-hdr"
+    run_b = tmp_path / "no-hdr"
+    shutil.copytree(FIXTURE, run_a)
+    shutil.copytree(FIXTURE, run_b)
+    # Only run_a gets HDR data; run_b has none
+    for replica_name in ("replica-0", "replica-1"):
+        _write_single_interval_hlog(run_a / replica_name / "latency.hlog")
+    (tmp_path / "stressum-comparison.json").write_text(
+        json.dumps({"runs": [{"path": "with-hdr"}, {"path": "no-hdr"}]}),
+        encoding="utf-8",
+    )
+    code = main([])
+    assert code == 2
