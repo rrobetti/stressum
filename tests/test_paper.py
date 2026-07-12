@@ -321,9 +321,7 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
         "OJP runs on the JVM, so RSS alone can overstate live application memory pressure."
         in rationale
     )
-    assert "the shaded band above and below a line is the 95% confidence interval" in (
-        rationale.lower()
-    )
+    assert "The shaded band above and below a line is the Min/Max Range:" in rationale
     assert "the plotted value is not a per-node median." in rationale
     assert "`throughput_vs_load.png`: the top-level throughput view." in rationale
     assert "`ojp_heap_used_committed_vs_load.png`: keeps heap used and heap committed" in rationale
@@ -395,6 +393,8 @@ def test_proxy_tier_report_plots_skip_hikaricp(
                 "aggregate_rps": 100.0,
                 "per_node_rps": 50.0,
                 "mean": 0.0,
+                "min": 0.0,
+                "max": 0.0,
                 "ci95_low": 0.0,
                 "ci95_high": 0.0,
             },
@@ -404,6 +404,8 @@ def test_proxy_tier_report_plots_skip_hikaricp(
                 "aggregate_rps": 100.0,
                 "per_node_rps": 50.0,
                 "mean": 12.0,
+                "min": 11.0,
+                "max": 13.0,
                 "ci95_low": 11.0,
                 "ci95_high": 13.0,
             },
@@ -413,6 +415,8 @@ def test_proxy_tier_report_plots_skip_hikaricp(
                 "aggregate_rps": 100.0,
                 "per_node_rps": 50.0,
                 "mean": 8.0,
+                "min": 7.0,
+                "max": 9.0,
                 "ci95_low": 7.0,
                 "ci95_high": 9.0,
             },
@@ -431,7 +435,7 @@ def test_proxy_tier_report_plots_skip_hikaricp(
 
     fig = captured["fig"]
     labels = fig.axes[0].get_legend_handles_labels()[1]
-    assert labels == ["OJP", "PgBouncer"]
+    assert labels == ["OJP", "Min/Max Range", "PgBouncer"]
     assert fig.axes[0].get_ylabel() == "Proxy-tier total CPU across nodes (%)"
     assert fig.axes[0].get_title() == "Proxy-tier total CPU across nodes vs load"
     plt.close(fig)
