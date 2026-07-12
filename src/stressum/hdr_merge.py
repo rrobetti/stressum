@@ -9,8 +9,11 @@ from pathlib import Path
 from hdrh.histogram import HdrHistogram
 from hdrh.log import HistogramLogReader
 
-# Java bench typically records latency in nanoseconds (up to 60 s trackable).
-_REF_HIST = HdrHistogram(1, 60_000_000_000, 5)
+# Java bench typically records latency in nanoseconds.  Use 1 hour (3.6 T ns)
+# as the upper bound so that production runs with timeout-induced outliers
+# (> 60 s) are captured rather than causing an IndexError in HdrHistogram.add().
+_MAX_TRACKABLE_NS = 3_600_000_000_000  # 1 hour in nanoseconds
+_REF_HIST = HdrHistogram(1, _MAX_TRACKABLE_NS, 3)
 
 
 def _looks_like_histogram_log(path: Path) -> bool:
@@ -32,7 +35,7 @@ def _looks_like_histogram_log(path: Path) -> bool:
 def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
     if not _looks_like_histogram_log(path):
         return None
-    merged = HdrHistogram(1, 60_000_000_000, 5)
+    merged = HdrHistogram(1, _MAX_TRACKABLE_NS, 3)
     reader = HistogramLogReader(str(path), _REF_HIST)
     try:
         while True:

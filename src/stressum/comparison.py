@@ -142,6 +142,8 @@ def run_comparison(
             )
         merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths)
         if merged is None:
+            for w in hdr_warnings:
+                print(f"    HDR warning: {w}", file=sys.stderr)
             print(
                 f"Missing HDR histogram data for run '{label}' ({run_path}); "
                 "all runs must have HDR .hlog files.",
