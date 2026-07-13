@@ -180,37 +180,6 @@ def write_paper_outputs(
     )
     paths[attempted_out.relative_to(out_dir).as_posix()] = attempted_out
 
-    for metric, filename, ylabel, title in (
-        (
-            "p95_latency_ms",
-            "p95_latency_boxplot.png",
-            "p95 successful latency (ms)",
-            f"p95 successful latency distribution by load — {scenario_title}",
-        ),
-        (
-            "p99_latency_ms",
-            "p99_latency_boxplot.png",
-            "p99 successful latency (ms)",
-            f"p99 successful latency distribution by load — {scenario_title}",
-        ),
-        (
-            "successful_rps",
-            "throughput_boxplot.png",
-            "Successful throughput (RPS)",
-            f"Successful throughput distribution by load — {scenario_title}",
-        ),
-    ):
-        out = out_dir / filename
-        _plot_metric_boxplot(
-            repetition_df,
-            metric,
-            out,
-            ylabel=ylabel,
-            title=title,
-            warnings=warnings,
-        )
-        paths[out.relative_to(out_dir).as_posix()] = out
-
     error_breakdown_out = out_dir / "error_type_breakdown.png"
     _plot_error_type_breakdown(
         repetition_df,
@@ -219,16 +188,6 @@ def write_paper_outputs(
         warnings=warnings,
     )
     paths[error_breakdown_out.relative_to(out_dir).as_posix()] = error_breakdown_out
-
-    slo_out = out_dir / "slo_heatmap.png"
-    _plot_slo_heatmap(
-        summary_df,
-        slo_out,
-        title=f"SLO pass/fail heatmap — {scenario_title}",
-        slo_p95_ms=slo_p95_ms,
-        slo_error_rate_pct=slo_error_rate_pct,
-    )
-    paths[slo_out.relative_to(out_dir).as_posix()] = slo_out
 
     for filename, metric, ylabel, title in (
         (
@@ -1193,9 +1152,6 @@ def _paper_index_markdown() -> str:
                 "- `mean_failed_latency_vs_load.png`: `mean_failed_latency_ms` from "
                 "`summary_stats.csv`."
             ),
-            "- `p95_latency_boxplot.png`: `p95_latency_ms` from `repetition_values.csv`.",
-            "- `p99_latency_boxplot.png`: `p99_latency_ms` from `repetition_values.csv`.",
-            "- `throughput_boxplot.png`: `successful_rps` from `repetition_values.csv`.",
             (
                 "- `postgres_backend_connections_vs_load.png`: "
                 "`postgres_backend_connections` from `summary_stats.csv`."
@@ -1229,10 +1185,6 @@ def _paper_index_markdown() -> str:
             (
                 "- `error_type_breakdown.png`: `error_count_*` columns from "
                 "`repetition_values.csv` grouped by technology and load."
-            ),
-            (
-                "- `slo_heatmap.png`: `p95_latency_ms` and `error_rate_pct` from "
-                "`summary_stats.csv` compared against CLI SLO thresholds."
             ),
             (
                 "- `GRAPH_RATIONALE.md`: explains why each main figure exists, including "
@@ -1289,15 +1241,15 @@ def _graph_rationale_markdown() -> str:
                 "bands to keep the two JVM series easy to compare on one view."
             ),
             (
-                "- Boxplots, the error breakdown chart, and the SLO heatmap do not use mean "
-                "with Min/Max Range because they are showing raw repetition spread, "
-                "composition, or pass/fail status rather than one averaged line per load."
+                "- `error_type_breakdown.png` does not use mean with Min/Max Range "
+                "because it shows failure composition rather than one averaged line "
+                "per load."
             ),
             (
                 "- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% "
                 "confidence intervals for the report metrics, while `repetition_values.csv` "
-                "keeps the repetition-level raw values used by the boxplots and downstream "
-                "analysis."
+                "keeps the repetition-level raw values used by `error_type_breakdown.png` "
+                "and downstream analysis."
             ),
             (
                 "- For `proxy_tier_cpu_vs_load.png` and `proxy_tier_rss_vs_load.png`, each run "
@@ -1334,18 +1286,6 @@ def _graph_rationale_markdown() -> str:
                 "helps separate fast rejections from slow timeouts under load."
             ),
             (
-                "- `p95_latency_boxplot.png`: shows the full repetition-to-repetition spread of "
-                "p95 latency at each load, instead of only the average."
-            ),
-            (
-                "- `p99_latency_boxplot.png`: shows the repetition spread for p99 latency so "
-                "unstable tail behaviour is easier to spot."
-            ),
-            (
-                "- `throughput_boxplot.png`: shows the repetition spread of successful "
-                "throughput at each load."
-            ),
-            (
                 "- `postgres_backend_connections_vs_load.png`: explains how much backend "
                 "connection pressure reaches PostgreSQL as load rises."
             ),
@@ -1371,10 +1311,6 @@ def _graph_rationale_markdown() -> str:
             (
                 "- `error_type_breakdown.png`: groups failures by kind so total error rate can "
                 "be tied back to concrete failure modes."
-            ),
-            (
-                "- `slo_heatmap.png`: gives a quick pass/fail view against the configured p95 "
-                "latency and error-rate thresholds."
             ),
             "",
             "## OJP heap diagnostics",

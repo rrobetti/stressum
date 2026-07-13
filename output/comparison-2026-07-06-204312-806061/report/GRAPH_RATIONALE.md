@@ -12,7 +12,7 @@
 - Mean ± 95% CI is also used in the measured panels of `attempted_completed_success_error_rps.png`: attempted RPS, successful RPS, and error RPS. The offered RPS panel does not use a confidence interval because it is the configured target load, not an observed metric with run to run variation.
 - The combined OJP heap report graph (`ojp_heap_used_committed_vs_load.png`) shows mean lines without shaded bands to keep the two JVM series easy to compare on one view.
 - Boxplots, the error breakdown chart, and the SLO heatmap do not use mean ± 95% CI because they are showing raw repetition spread, composition, or pass/fail status rather than one averaged line per load.
-- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% confidence intervals for the report metrics, while `repetition_values.csv` keeps the repetition-level raw values used by the boxplots and downstream analysis.
+- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% confidence intervals for the report metrics, while `repetition_values.csv` keeps the repetition-level raw values used by `error_type_breakdown.png` and downstream analysis.
 
 ## Core comparison figures
 
@@ -22,9 +22,6 @@
 - `p95_latency_vs_load.png`: the main tail-latency view for normal service quality comparisons.
 - `p99_latency_vs_load.png`: a stricter tail-latency view that highlights worse outliers than p95.
 - `mean_failed_latency_vs_load.png`: shows how long failed requests took, which helps separate fast rejections from slow timeouts under load.
-- `p95_latency_boxplot.png`: shows the full repetition-to-repetition spread of p95 latency at each load, instead of only the average.
-- `p99_latency_boxplot.png`: shows the repetition spread for p99 latency so unstable tail behaviour is easier to spot.
-- `throughput_boxplot.png`: shows the repetition spread of successful throughput at each load.
 - `postgres_backend_connections_vs_load.png`: explains how much backend connection pressure reaches PostgreSQL as load rises.
 - `rps_per_db_connection_vs_load.png`: shows how efficiently each backend connection is being used.
 - `postgres_cpu_vs_load.png`: shows how much database CPU the workload costs.
@@ -32,7 +29,6 @@
 - `proxy_tier_cpu_vs_load.png`: shows CPU cost in the proxy/application tier for technologies that actually have that tier.
 - `proxy_tier_rss_vs_load.png`: shows the proxy/application-tier RSS memory footprint for technologies that actually have that tier.
 - `error_type_breakdown.png`: groups failures by kind so total error rate can be tied back to concrete failure modes.
-- `slo_heatmap.png`: gives a quick pass/fail view against the configured p95 latency and error-rate thresholds.
 
 ## OJP heap diagnostics
 
