@@ -1240,7 +1240,11 @@ def _graph_rationale_markdown() -> str:
                 "(`ojp_heap_used_committed_vs_load.png`) shows mean lines without shaded "
                 "bands to keep the two JVM series easy to compare on one view."
             ),
-            "- `error_type_breakdown.png` does not use mean with Min/Max Range because it shows failure composition rather than one averaged line per load.",
+            (
+                "- `error_type_breakdown.png` does not use mean with Min/Max Range "
+                "because it shows failure composition rather than one averaged line "
+                "per load."
+            ),
             (
                 "- `summary_stats.csv` stores mean, median, stddev, min, max, and 95% "
                 "confidence intervals for the report metrics, while `repetition_values.csv` "
