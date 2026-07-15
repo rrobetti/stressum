@@ -74,6 +74,8 @@ def _axis_markdown(ax: Any, axis_index: int) -> list[str]:
 
     patch_rows = []
     for patch_index, patch in enumerate(ax.patches, start=1):
+        if not all(hasattr(patch, attr) for attr in ("get_x", "get_y", "get_width", "get_height")):
+            continue
         patch_rows.append(
             {
                 "patch": patch_index,
@@ -182,7 +184,11 @@ def _markdown_table(rows: list[dict[str, Any]]) -> str:
     header = "| " + " | ".join(columns) + " |"
     separator = "| " + " | ".join("---" for _ in columns) + " |"
     body = [
-        "| " + " | ".join(_escape_markdown(_format_value(row.get(column, ""))) for column in columns) + " |"
+        "| "
+        + " | ".join(
+            _escape_markdown(_format_value(row.get(column, ""))) for column in columns
+        )
+        + " |"
         for row in rows
     ]
     return "\n".join([header, separator, *body])
