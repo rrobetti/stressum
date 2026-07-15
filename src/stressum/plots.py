@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from stressum.chart_artifacts import save_chart_artifacts
 from stressum.load import read_node_csv
 
 # Fixed RNG so matplotlib/numpy-backed styling is reproducible across runs.
@@ -52,9 +53,7 @@ def plot_throughput(agg: RunAggregates, out: Path) -> None:
     ax.set_ylabel("Achieved throughput (RPS)")
     ax.set_title("Per-replica achieved throughput")
     ax.legend(loc="upper right")
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_latency_percentiles(agg: RunAggregates, out: Path) -> None:
@@ -72,9 +71,7 @@ def plot_latency_percentiles(agg: RunAggregates, out: Path) -> None:
     ax.set_ylabel("Latency (ms)")
     ax.set_title("Per-replica latency percentiles (from summary.json)")
     ax.legend(title="Percentile")
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_error_rates(agg: RunAggregates, out: Path) -> None:
@@ -92,9 +89,7 @@ def plot_error_rates(agg: RunAggregates, out: Path) -> None:
     ax.set_ylabel("Error rate (%)")
     ax.set_title("Per-replica error rate vs aggregate (from counts)")
     ax.legend()
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def _pick_pg_path(bundle: RunBundle) -> Path | None:
@@ -131,9 +126,7 @@ def plot_pg_backends(bundle: RunBundle, out: Path) -> bool:
     ax.set_ylabel(col)
     ax.set_title("PostgreSQL node metric (from pg_metrics.csv)")
     fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -152,7 +145,5 @@ def plot_jvm_heap(bundle: RunBundle, out: Path) -> bool:
     ax.set_ylabel("heap_used_mb")
     ax.set_title(f"JVM heap (proxy) — {p.name}")
     fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True

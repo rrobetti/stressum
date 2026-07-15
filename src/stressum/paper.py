@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from stressum.aggregate import proxy_tier_rss_summary
+from stressum.chart_artifacts import register_chart_artifacts, save_chart_artifacts
 from stressum.comparison_plots import _technology_from_label
 from stressum.load import RunBundle, read_node_csv
 
@@ -169,7 +170,7 @@ def write_paper_outputs(
             warnings=warnings,
             technologies=_PROXY_TIER_TECH_ORDER if metric.startswith("proxy_tier_") else None,
         )
-        paths[out.relative_to(out_dir).as_posix()] = out
+        register_chart_artifacts(paths, out, out_dir)
 
     attempted_out = out_dir / "attempted_completed_success_error_rps.png"
     _plot_attempted_completed_chart(
@@ -178,7 +179,7 @@ def write_paper_outputs(
         title=f"Offered, attempted, successful, and error RPS vs load — {scenario_title}",
         warnings=warnings,
     )
-    paths[attempted_out.relative_to(out_dir).as_posix()] = attempted_out
+    register_chart_artifacts(paths, attempted_out, out_dir)
 
     error_breakdown_out = out_dir / "error_type_breakdown.png"
     _plot_error_type_breakdown(
@@ -187,7 +188,7 @@ def write_paper_outputs(
         title=f"Error-type breakdown by technology and load — {scenario_title}",
         warnings=warnings,
     )
-    paths[error_breakdown_out.relative_to(out_dir).as_posix()] = error_breakdown_out
+    register_chart_artifacts(paths, error_breakdown_out, out_dir)
 
     for filename, metric, ylabel, title in (
         (
@@ -206,7 +207,7 @@ def write_paper_outputs(
             title=title,
             warnings=warnings,
         ):
-            paths[out.relative_to(out_dir).as_posix()] = out
+            register_chart_artifacts(paths, out, out_dir)
 
     heap_combined_out = out_dir / "ojp_heap_used_committed_vs_load.png"
     if _plot_ojp_heap_combined(
@@ -215,7 +216,7 @@ def write_paper_outputs(
         title=f"OJP heap used and committed vs load — {scenario_title}",
         warnings=warnings,
     ):
-        paths[heap_combined_out.relative_to(out_dir).as_posix()] = heap_combined_out
+        register_chart_artifacts(paths, heap_combined_out, out_dir)
 
     index_out = out_dir / "main_graphs_index.md"
     index_out.write_text(_paper_index_markdown(), encoding="utf-8")
@@ -251,7 +252,7 @@ def write_ojp_heap_debug_outputs(
         title="OJP heap used per node by load",
         warnings=warnings,
     ):
-        paths[out.relative_to(out_dir).as_posix()] = out
+        register_chart_artifacts(paths, out, out_dir)
     return paths, list(dict.fromkeys(warnings))
 
 
@@ -747,9 +748,7 @@ def _plot_attempted_completed_chart(
         ax.grid(True, alpha=0.25)
     axes[0, 0].legend(loc="best")
     fig.suptitle(title)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def _plot_metric_boxplot(
@@ -1540,9 +1539,7 @@ def _render_placeholder(ax: Any, title: str, text: str) -> None:
 
 
 def _save_plot(fig: Any, out: Path) -> None:
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def _error_category(error_name: str) -> str:

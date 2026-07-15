@@ -13,6 +13,7 @@ from stressum.aggregate import (
     proxy_tier_cpu_timeseries,
     proxy_tier_host_cpu_timeseries,
 )
+from stressum.chart_artifacts import register_chart_artifacts, save_chart_artifacts
 from stressum.load import RunBundle, read_node_csv
 
 
@@ -282,9 +283,7 @@ def plot_cross_technology_grouped_bars(
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     ax.legend(loc="upper right", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_cross_technology_completed_throughput(
@@ -339,9 +338,7 @@ def plot_cross_technology_completed_throughput(
         if tech not in deduped:
             deduped[tech] = handle
     ax.legend(deduped.values(), deduped.keys(), loc="upper right", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_cross_technology_throughput_metric_curve(
@@ -369,9 +366,7 @@ def plot_cross_technology_throughput_metric_curve(
         ax.set_yscale("log")
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, which="both", alpha=0.25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_cross_technology_throughput_latency_curve(
@@ -795,9 +790,7 @@ def plot_comparison_throughput(
     ax.set_ylabel(ylabel)
     ax.set_title(_title_with_technology(title, technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_completed_throughput(
@@ -824,9 +817,7 @@ def plot_comparison_completed_throughput(
         )
     )
     ax.legend(loc="upper right", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def _artifact_slug(label: str, bundle: RunBundle) -> str:
@@ -858,9 +849,7 @@ def plot_comparison_latency_percentile(
     ax.set_ylabel("Latency (ms)")
     ax.set_title(_title_with_technology(f"{title} — {percentile}", technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_total_successful_requests(
@@ -876,9 +865,7 @@ def plot_comparison_total_successful_requests(
     ax.set_ylabel("Total successful requests (sum of replicas)")
     ax.set_title(_title_with_technology("Total successful by scenario", technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_proxy_host_cpu_aligned_peak(
@@ -899,9 +886,7 @@ def plot_comparison_proxy_host_cpu_aligned_peak(
         )
     )
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_error_rate(
@@ -917,9 +902,7 @@ def plot_comparison_error_rate(
     ax.set_ylabel("Aggregate error rate (%)")
     ax.set_title(_title_with_technology("Errors by scenario", technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_open_loop_missed_opportunities(
@@ -935,9 +918,7 @@ def plot_comparison_open_loop_missed_opportunities(
     ax.set_ylabel("Sum of openLoopMissedOpportunities")
     ax.set_title(_title_with_technology("Open loop — missed opportunities", technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def plot_comparison_open_loop_scheduling_delay(
@@ -953,9 +934,7 @@ def plot_comparison_open_loop_scheduling_delay(
     ax.set_ylabel("Sum of openLoopSchedulingDelayMs")
     ax.set_title(_title_with_technology("Open loop — scheduling delay (ms)", technology))
     ax.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
 
 
 def _pick_pg_path(bundle: RunBundle) -> Path | None:
@@ -1017,9 +996,7 @@ def plot_scenario_pg_backends(label: str, bundle: RunBundle, out: Path) -> bool:
     ax.set_ylabel("backends")
     ax.set_xlabel("Time since run start (s)")
     ax.set_title(f"PostgreSQL backends (pg_metrics.csv) — {label}")
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1045,9 +1022,7 @@ def _plot_scenario_db_proc_series(
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Time since sample start (s)")
     ax.set_title(f"{title} — {label}")
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1090,9 +1065,7 @@ def plot_scenario_jvm_heap(label: str, bundle: RunBundle, out: Path) -> bool:
     ax.set_ylabel("heap_used_mb")
     ax.set_xlabel("Time since sample start (s)")
     ax.set_title(f"OJP / JVM heap (first proxy jvm_metrics.csv per run) — {label}")
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1115,9 +1088,7 @@ def plot_scenario_proxy_service_cpu_aligned_peak(
     ax.set_title(
         f"Proxy tier CPU — time-aligned sum (aligned_peak={peak_pct:.1f}%) — {label}"
     )
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1140,9 +1111,7 @@ def plot_scenario_proxy_host_cpu_aligned_peak(
     ax.set_title(
         f"Proxy tier host CPU — time-aligned sum (aligned_peak={peak_pct:.1f}%) — {label}"
     )
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1197,9 +1166,7 @@ def plot_comparison_timeseries_rps_p99(
     ax1.set_xlabel("Time since run start (s)")
     ax1.legend(loc="upper right", fontsize=8)
     ax1.grid(True, alpha=0.25)
-    fig.tight_layout()
-    fig.savefig(out, format="png")
-    plt.close(fig)
+    save_chart_artifacts(fig, out)
     return True
 
 
@@ -1234,7 +1201,7 @@ def _open_loop_totals_for_scenario(scenario: dict[str, Any]) -> tuple[bool, int,
 
 
 def _register_plot_path(paths: dict[str, Path], out: Path, out_dir: Path) -> None:
-    paths[out.relative_to(out_dir).as_posix()] = out
+    register_chart_artifacts(paths, out, out_dir)
 
 
 def write_comparison_plots(
@@ -1406,8 +1373,7 @@ def write_comparison_plots(
             out = _per_scenario_output_path(out_dir, base, label, bundle)
             out.parent.mkdir(parents=True, exist_ok=True)
             if plot_fn(label, bundle, out):
-                rel = out.relative_to(out_dir).as_posix()
-                paths[rel] = out
+                _register_plot_path(paths, out, out_dir)
         proxy_cpu = s.get("proxy_cpu")
         if proxy_cpu is not None:
             base = "comparison_proxy_service_cpu_aligned_peak"
@@ -1419,8 +1385,7 @@ def write_comparison_plots(
                 out,
                 aligned_peak_pct=float(proxy_cpu["service_cpu_aligned_peak_pct"]),
             ):
-                rel = out.relative_to(out_dir).as_posix()
-                paths[rel] = out
+                _register_plot_path(paths, out, out_dir)
             host_peak = proxy_cpu.get("host_cpu_aligned_peak_pct")
             if isinstance(host_peak, (int, float)):
                 base = "comparison_proxy_host_cpu_aligned_peak"
@@ -1432,8 +1397,7 @@ def write_comparison_plots(
                     out,
                     aligned_peak_pct=float(host_peak),
                 ):
-                    rel = out.relative_to(out_dir).as_posix()
-                    paths[rel] = out
+                    _register_plot_path(paths, out, out_dir)
 
     print("  Cross-technology charts...", flush=True)
     _write_cross_technology_plots(scenarios, out_dir, paths, lat_title=lat_title)
@@ -1441,6 +1405,6 @@ def write_comparison_plots(
     print("  Timeseries chart...", flush=True)
     ts = out_dir / "comparison_timeseries_rps_p99.png"
     if plot_comparison_timeseries_rps_p99([(s["label"], s["bundle"]) for s in scenarios], ts):
-        paths["comparison_timeseries_rps_p99.png"] = ts
+        _register_plot_path(paths, ts, out_dir)
 
     return paths
