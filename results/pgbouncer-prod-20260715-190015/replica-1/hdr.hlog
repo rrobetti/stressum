@@ -1,0 +1,5 @@
+#[Benchmark latencies in microseconds]
+#[Histogram log format version 1.3]
+#[StartTime: 1784139138.452 (seconds since epoch), Wed Jul 15 18:12:18 UTC 2026]
+"StartTimestamp","Interval_Length","Interval_Max","Interval_Compressed_Histogram"
+9223372036854776.000,-9223372036854776.000,105.251,HISTFAAAAg942i2TPW4UQRCFa9/U9tb0zv7YayOhxbIsBwhZBASI0AECCXEA5JCYa3ADDkCEuAAZISchIOcG8FXNbs9s1997VdVd8+Tzl4PZ8NXm33DaF/l3++ut3f+dDX9+LPT7XN93+rbQz6Ou9EGP9UajdlrpE/KZ1lrWWtcasS81+oZd+S5lKqtp4wPqUNGEWq11mdbydUYbfysNrvKtFNYG3FBYGFahaBZaskiOhugm2KVw3BbecDb3aNjTY46GGCDS5i0CaIsJdDRvfcK5b8175+mtn8sf+eTsMU37i8m3bd+3F/u2jx4+NR/IJY8pOhRNYNB7FF20iTyt6myGihgdhGe1AKFAi2wDb5qDVmDYsrsXDo3XULPSjMyERMngtOyUk8FcR9Hxze5mNBVRnRNKAkuirIZTrTzKMtKqLBrXthPcqSx36mo8PRNsyW/bgngEVYb1RHtPbOdYMyqrKb6mOoykrPaHlleW8KWqgLyobIn082GMMBI/eFbGRXHheVVD9WVVJgCOZsjLVrVxmh0oVu41KKq5yrwZrGZtNd97rWXNoc8Dc8zh29XoFfQZL+KlbsSDBTxzfcN0X6OOTPNLXXpO8K4m/ADZTq9rtK2YRt73p6/hjnUNeiDOkB+kjZ4ScoVph/y8gCu9IuimoCPAd+y3WK+BPehe/xb6qBcYz1ib+gbugFPmgXWFctR/Pqcf9w==

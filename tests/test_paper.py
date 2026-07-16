@@ -208,12 +208,18 @@ def test_compare_generates_report_and_debug_outputs(
     assert (report / "summary_stats.csv").is_file()
     assert (report / "repetition_values.csv").is_file()
     assert (report / "throughput_vs_load.png").is_file()
+    assert (report / "throughput_vs_load.md").is_file()
     assert (report / "mean_failed_latency_vs_load.png").is_file()
+    assert (report / "mean_failed_latency_vs_load.md").is_file()
     assert not (report / "p95_latency_boxplot.png").exists()
     assert not (report / "p99_latency_boxplot.png").exists()
     assert not (report / "throughput_boxplot.png").exists()
     assert not (report / "slo_heatmap.png").exists()
     assert (debug / "comparison_cross_tech_total_throughput.png").is_file()
+    assert (debug / "comparison_cross_tech_total_throughput.md").is_file()
+    assert (report / "throughput_vs_load.md").read_text(encoding="utf-8").startswith(
+        "# throughput_vs_load.png"
+    )
     summary_df = pd.read_csv(report / "summary_stats.csv")
     assert {
         "scenario",
