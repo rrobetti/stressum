@@ -30,6 +30,10 @@ flowchart LR
 
 HikariCP is the direct baseline: each of the sixteen replicas holds its own local connection pool, so as more replicas come online or as more load is applied, the total number of open PostgreSQL connections grows accordingly — reaching 312 at the higher load levels. PgBouncer interposes a pooler layer fronted by HAProxy, capping the real backend connections at around 56. OJP takes a different approach: client-side pooling is removed entirely from the application, and virtual JDBC connections are multiplexed through a three-node OJP server tier that again limits real database connections to around 53.
 
+## Test Environment
+
+All machines ran Ubuntu 24.04 LTS on AMD EPYC processors, isolated on a dedicated private network with no TLS on any benchmark leg. The database node had 16 vCPUs and 295 GiB of RAM. Each of the two load generator machines had 16 vCPUs and 31 GiB of RAM, running eight bench replicas each. The three proxy or OJP nodes each had 8 vCPUs and 15 GiB of RAM; the HAProxy node used by the PgBouncer scenario had 4 vCPUs and 7.8 GiB. The database was pre-loaded with one million accounts, one hundred thousand items, and ten million orders. The full suite — four load levels, five repetitions per level, across all three technologies — ran across July 14–15, 2026 and took just over 33 hours in total.
+
 ## The Big Picture: Who Gets Work Done?
 
 The most direct question in a benchmark like this is how much useful work each technology delivers. At light load — 16 aggregate requests per second — all three perform almost identically, completing about 15.3–15.5 successful requests per second. That is expected: at low load, there is no contention and every approach works fine.
