@@ -1,14 +1,32 @@
-# Under Pressure: How OJP, PgBouncer, and HikariCP Handle a Real PostgreSQL Workload
+# Connection Management Under Pressure: An HTAP Benchmark of OJP, PgBouncer, and HikariCP
 
-When most people think about PostgreSQL performance tuning, they focus on indexes, query plans, and configuration knobs. But there is a layer that sits between your application and the database that has an outsized effect on how the whole system behaves under load: the connection strategy. This article documents a rigorous comparison of three widely-used approaches — **HikariCP with direct connections**, **PgBouncer with HAProxy**, and **OJP** (a centralized Java-based connection proxy) — under a demanding hybrid transactional/analytical workload pushed progressively to its limits.
+When most people think about PostgreSQL performance, they focus on indexes, query plans, and configuration knobs. But there is a layer between your application and the database that has an outsized effect on how the whole system behaves under load: the connection strategy. This article documents a controlled comparison of three widely-used approaches — **HikariCP with direct connections**, **PgBouncer with HAProxy**, and **OJP** (a centralized Java-based connection proxy) — under a mixed transactional/analytical workload pushed progressively to its limits.
+
+## Results at a Glance
+
+At the highest tested load (64 aggregate requests per second offered), the three technologies produced the following measured outcomes. The PostgreSQL RSS figure for PgBouncer is noted separately because it is an unexpected result that warrants further investigation; see the Limitations section.
+
+| Metric at 64 offered RPS | HikariCP | OJP | PgBouncer |
+|---|---|---|---|
+| Successful throughput | 21.4 RPS | 39.6 RPS | 26.2 RPS |
+| Error rate | 66.2% | 36.0% | 58.8% |
+| Mean failed-request latency | ~30.0 s | ~3.2 s | ~30.0 s |
+| Backend connections to PostgreSQL | 312 | 53 | 56 |
+| Reported PostgreSQL RSS† | 63 GiB | 24 GiB | 108–110 GiB |
+
+*† PostgreSQL RSS under PgBouncer is substantially higher than expected given the backend connection count. The cause is under investigation; see [Limitations and Open Questions](#limitations-and-open-questions).*
 
 ## What Was Tested and Why It Matters
 
-The W5_HTAP workload used here combines both fast transactional queries and slower analytical ones, a pattern increasingly common in modern applications that read reporting data while also processing live transactions. This mix is intentionally hard on connection pools: analytical queries hold connections much longer, which means the pool drains quickly when load increases.
+The W5_HTAP workload combines fast transactional queries with slower analytical ones, a pattern common in applications that process live transactions while also reading reporting data. This mix is intentionally demanding for connection pools: analytical queries hold connections longer, which means the pool exhausts more quickly as load rises.
 
-The benchmark ran on identical hardware for all three technologies, with sixteen independent client processes simulating sixteen microservice replicas — a deliberately realistic topology. Using a single client would hide the fragmentation problems that arise in a real deployment where dozens of services each maintain their own pool. Load was swept across four levels — 16, 32, 48, and 64 aggregate requests per second — and each level was repeated five times so that the charts show means across those repetitions, with shaded bands indicating the min/max spread.
+Sixteen independent client JVM processes simulated sixteen microservice replicas spread across two load-generator machines. Using a single client would hide the connection-fragmentation effects that occur in a real deployment where many services each maintain their own pool. Load was swept across four levels — 16, 32, 48, and 64 aggregate requests per second — and each level was repeated five times. Charts show the mean across those five repetitions; the original figures in the repository include min/max bands across repetitions.
 
-The three topologies under test represent meaningfully different architectural choices:
+Latency is measured end to end from when the open-loop load generator schedules each request until it completes or fails. The 30-second timeout applies to a connection acquisition attempt, not necessarily to the entire request lifecycle: under HikariCP and PgBouncer, a request can queue for a worker thread, then wait again for a connection from the pool, which is why successful p95 latency values can substantially exceed the connection timeout. This is discussed further in [The Latency of What Succeeds](#the-latency-of-what-succeeds).
+
+## Architectures and Configurations
+
+The three topologies model different production deployment patterns rather than being normalized to an identical connection count. The configurations were chosen to reflect their intended deployment defaults.
 
 ```mermaid
 flowchart LR
@@ -28,21 +46,27 @@ flowchart LR
     end
 ```
 
-HikariCP is the direct baseline: each of the sixteen replicas holds its own local connection pool, so as more replicas come online or as more load is applied, the total number of open PostgreSQL connections grows accordingly — reaching 312 at the higher load levels. PgBouncer interposes a pooler layer fronted by HAProxy, capping the real backend connections at around 56. OJP takes a different approach: client-side pooling is removed entirely from the application, and virtual JDBC connections are multiplexed through a three-node OJP server tier that again limits real database connections to around 53.
+| | HikariCP | OJP | PgBouncer |
+|---|---|---|---|
+| Client pool per replica | 300 direct connections | None (virtual connections) | 48 HikariCP + PgBouncer pool size 16 per node |
+| Backend DB connection budget | Up to 312 observed | 48 configured (≤53 observed) | ≤56 observed |
+| Proxy tier | None | 3 OJP nodes | 3 PgBouncer nodes + 1 HAProxy node |
+
+HikariCP is the direct baseline: each of the sixteen replicas holds its own local connection pool, so the total number of open PostgreSQL connections grows with the replica count — reaching 312 at higher load levels. PgBouncer interposes a pooler layer fronted by HAProxy, capping backend connections to around 56. OJP removes client-side pooling from the application entirely; virtual JDBC connections are multiplexed through a three-node OJP server tier, again limiting real database connections to around 53.
+
+Because HikariCP was configured with a substantially larger backend connection budget, comparisons of connection-sensitive metrics like PostgreSQL RSS should account for that difference. The [Limitations and Open Questions](#limitations-and-open-questions) section discusses this further.
 
 ## Test Environment
 
-All machines ran Ubuntu 24.04 LTS on AMD EPYC processors, isolated on a dedicated private network with no TLS on any benchmark leg. The database node had 16 vCPUs and 295 GiB of RAM. Each of the two load generator machines had 16 vCPUs and 31 GiB of RAM, running eight bench replicas each. The three proxy or OJP nodes each had 8 vCPUs and 15 GiB of RAM; the HAProxy node used by the PgBouncer scenario had 4 vCPUs and 7.8 GiB. The database was pre-loaded with one million accounts, one hundred thousand items, and ten million orders. The full suite — four load levels, five repetitions per level, across all three technologies — ran across July 14–15, 2026 and took just over 33 hours in total.
+The database and load-generation infrastructure were held constant across all three scenarios. Each proxy architecture used the topology described above. All machines ran Ubuntu 24.04 LTS on AMD EPYC processors, isolated on a dedicated private network with no TLS on any benchmark leg. The database node had 16 vCPUs and 295 GiB of RAM. Each of the two load generator machines had 16 vCPUs and 31 GiB of RAM, running eight bench replicas each. The three proxy or OJP nodes each had 8 vCPUs and 15 GiB of RAM; the HAProxy node used by the PgBouncer scenario had 4 vCPUs and 7.8 GiB. The database was pre-loaded with one million accounts, one hundred thousand items, and ten million orders. The full suite — four load levels, five repetitions per level, across all three technologies — ran across July 14–15, 2026 and took just over 33 hours in total.
 
-## The Big Picture: Who Gets Work Done?
+## Successful Throughput
 
-The most direct question in a benchmark like this is how much useful work each technology delivers. At light load — 16 aggregate requests per second — all three perform almost identically, completing about 15.3–15.5 successful requests per second. That is expected: at low load, there is no contention and every approach works fine.
-
-Things diverge sharply as soon as load increases beyond what the database can comfortably absorb.
+The most direct question in a benchmark like this is how much useful work each technology delivers.
 
 ```mermaid
 xychart-beta
-    title "Successful throughput vs load"
+    title "Successful throughput vs load (line order: HikariCP, OJP, PgBouncer)"
     x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
     y-axis "Successful RPS" 0 --> 55
     line [15.44, 18.63, 20.81, 21.44]
@@ -50,17 +74,22 @@ xychart-beta
     line [15.46, 21.96, 25.71, 26.23]
 ```
 
-*Lines represent HikariCP (first), OJP (second), and PgBouncer (third).*
+| Offered load | HikariCP | OJP | PgBouncer |
+|---|---|---|---|
+| 16 RPS | 15.44 | 15.31 | 15.46 |
+| 32 RPS | 18.63 | 28.16 | 21.96 |
+| 48 RPS | 20.81 | 35.86 | 25.71 |
+| 64 RPS | 21.44 | 39.60 | 26.23 |
 
-At 64 RPS, OJP is delivering **39.6 successful requests per second** while HikariCP manages only 21.4 and PgBouncer 26.2. That is nearly double the useful output compared to HikariCP and about 51% more than PgBouncer — despite all three being given the same offered load. The gap is not caused by OJP doing less work per connection; it is caused by the other two approaches wasting a large fraction of their connections on requests that will ultimately time out.
+At 16 aggregate requests per second, all three deliver around 15.3–15.5 successful requests per second. At low load there is little contention and any connection strategy works adequately. At 64 RPS, OJP delivers **39.6 successful requests per second** while HikariCP produces 21.4 and PgBouncer 26.2. The results indicate that the HikariCP and PgBouncer configurations converted a smaller proportion of offered load into successful requests at higher load levels. Determining exactly where time was spent would require connection-state, wait-event, and query-level analysis beyond the scope of this benchmark.
 
-## Errors Tell the Real Story
+## Errors
 
-Throughput numbers alone do not fully explain what is happening. The error rate chart makes it concrete.
+Throughput figures alone do not fully capture the difference in behaviour. The error rate shows what fraction of offered requests were not completed successfully.
 
 ```mermaid
 xychart-beta
-    title "Error rate vs load"
+    title "Error rate vs load (line order: HikariCP, OJP, PgBouncer)"
     x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
     y-axis "Error rate (%)" 0 --> 80
     line [0, 39.4, 56.4, 66.2]
@@ -68,19 +97,19 @@ xychart-beta
     line [0.01, 29.8, 46.1, 58.8]
 ```
 
-*Lines represent HikariCP (first), OJP (second), and PgBouncer (third).*
+One notable result at the lowest load level is that OJP recorded a 1.4% error rate while HikariCP and PgBouncer were effectively error-free. Those OJP errors were `SQLTransientConnectionException` rejections — OJP's internal queue-limit firing when a virtual connection could not acquire an operation slot within the configured timeout. They appeared across all five repetitions at this load level, which suggests they reflect a consistent characteristic of the OJP queue configuration rather than an anomalous run. HikariCP and PgBouncer did not encounter this kind of fast rejection at low load because they accepted all requests into their queues and served them within the timeout window.
 
-HikariCP begins failing at 39% of requests the moment load doubles to 32 RPS, climbing to 66% at 64 RPS. PgBouncer is not much better at 59%. OJP errors grow more slowly — 11% at 32 RPS, settling at 36% at 64 RPS. That alone is a significant advantage, but the deeper story is in what happens when those errors occur.
+At higher loads, HikariCP errors reach 39% at 32 RPS and 66% at 64 RPS. PgBouncer reaches 59%. OJP errors grow more slowly, reaching 36% at the highest tested load level.
 
-## Why Fast Failures Are as Important as Low Failure Rates
+## Why Fast Failures Matter
 
-There is a subtle but critical distinction between a system that fails 66% of requests and a system that also takes 30 seconds to tell you each of those requests has failed. With HikariCP and PgBouncer, failed requests hit the connection timeout ceiling — they sit in the queue for almost exactly 30,000 milliseconds before being rejected. From a user experience perspective, that is catastrophic: clients wait nearly a minute just to receive an error message.
+There is a meaningful difference between a system that fails a request and one that takes 30 seconds to report that failure. With HikariCP and PgBouncer, failed requests exhaust the connection acquisition timeout — they wait for almost exactly 30,000 milliseconds before being rejected. That is operationally damaging: clients wait roughly 30 seconds just to receive an error, which ties up application threads and degrades the experience for downstream callers.
 
-OJP behaves fundamentally differently.
+OJP behaves differently.
 
 ```mermaid
 xychart-beta
-    title "Mean failed-request latency vs load"
+    title "Mean failed-request latency vs load (line order: HikariCP, OJP, PgBouncer)"
     x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
     y-axis "Mean failed latency (ms)" 0 --> 35000
     line [0, 30000, 30000, 30000]
@@ -88,17 +117,40 @@ xychart-beta
     line [30006, 29978, 30000, 30000]
 ```
 
-*Lines represent HikariCP (first), OJP (second), and PgBouncer (third). HikariCP has no data at 16 RPS because it produced no errors at that load level.*
+*HikariCP has no data at 16 RPS because it produced no errors at that load level.*
 
-At 64 RPS, OJP reports its failed requests in roughly **3.2 seconds** on average. At lighter load of 16 RPS it takes about 13 seconds, and crucially the latency *decreases* as load goes up — a sign that OJP's queue-rejection mechanism kicks in sooner the more congested the system becomes. For HikariCP and PgBouncer the error latency is flat at the timeout ceiling regardless of load level. A user waiting for a response under OJP knows within a few seconds that the request did not go through; under the other two, they wait half a minute for the same news.
+At 64 RPS, OJP's mean failed-request latency is roughly **3.2 seconds**. At 16 RPS it averages about 13 seconds — those are the same queue-limit rejections described above — and the latency decreases as load rises, indicating that OJP's backpressure mechanism rejects congested requests more quickly when the system is under greater pressure. For HikariCP and PgBouncer the failure latency stays flat at the timeout ceiling regardless of load.
 
-## PostgreSQL Memory: The Quiet Advantage
+## The Latency of What Succeeds
 
-One of the most striking findings in the resource data is how differently each approach affects PostgreSQL's memory footprint.
+The flip side of OJP's backpressure behaviour is that requests which do succeed are served with considerably lower tail latency. The p95 successful latency shows this most clearly.
 
 ```mermaid
 xychart-beta
-    title "PostgreSQL RSS vs load (MiB)"
+    title "p95 successful latency vs load in ms (line order: HikariCP, OJP, PgBouncer)"
+    x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
+    y-axis "p95 successful latency (ms)" 0 --> 160000
+    line [6472, 121966, 142947, 148990]
+    line [7052, 49, 147, 230]
+    line [13931, 45210, 47779, 48644]
+```
+
+| Offered load | HikariCP p95 | OJP p95 | PgBouncer p95 |
+|---|---|---|---|
+| 16 RPS | 6,472 ms | 7,052 ms | 13,931 ms |
+| 32 RPS | 121,966 ms | 49 ms | 45,210 ms |
+| 48 RPS | 142,947 ms | 147 ms | 47,779 ms |
+| 64 RPS | 148,990 ms | 230 ms | 48,644 ms |
+
+At 32 RPS, OJP's p95 successful latency is **49 milliseconds**. HikariCP's is 121,966 milliseconds and PgBouncer's is 45,210 milliseconds. The HikariCP figure is not erroneous: because latency is measured end to end from when the load generator schedules each request, a request that queues for a worker thread, then waits for a pool connection, can accumulate substantially more than one connection-timeout period before completing. OJP avoids this by rejecting requests it cannot serve quickly, so requests that make it through are not delayed by a long queue ahead of them. The gap narrows at higher loads but OJP's successful p95 remains substantially lower across all tested load points.
+
+## PostgreSQL Memory
+
+One of the more striking results in the resource data concerns PostgreSQL's memory footprint.
+
+```mermaid
+xychart-beta
+    title "PostgreSQL RSS vs load in MiB (line order: HikariCP, OJP, PgBouncer)"
     x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
     y-axis "PostgreSQL RSS (MiB)" 0 --> 120000
     line [20748, 53002, 60913, 63360]
@@ -106,19 +158,17 @@ xychart-beta
     line [99326, 104026, 109309, 110457]
 ```
 
-*Lines represent HikariCP (first), OJP (second), and PgBouncer (third).*
+Under OJP, PostgreSQL RSS stays between **17 and 25 GiB** across all load levels. Under HikariCP it grows from about 20 GiB at low load to over 63 GiB at full load, tracking the backend connection count: HikariCP eventually opens 312 connections, and each carries process memory and working buffers. OJP holds backend connections to around 53 and PostgreSQL memory grows accordingly.
 
-PostgreSQL's Resident Set Size — the memory it is actually using from the operating system's perspective — tells a clear story. Under OJP, PostgreSQL stays between **17 and 25 GiB** across all load levels. Under HikariCP it balloons from about 20 GiB at light load to over 63 GiB at full load. PgBouncer starts high — already at 99 GiB at the lowest load level — and climbs to 110 GiB.
-
-The reason is directly visible in the connection count chart. HikariCP eventually opens 312 backend connections to PostgreSQL; each connection carries process memory, shared memory state, and working buffers. OJP and PgBouncer both constrain backend connections to roughly 50–56, but PgBouncer's memory baseline is dramatically higher than OJP's. This difference likely reflects how PgBouncer interacts with PostgreSQL's shared buffer and per-process memory allocations at session startup and the way those initial allocations are retained even in pooling mode.
+The PgBouncer result is harder to explain. PgBouncer also constrains backend connections to around 56, similar to OJP, yet PostgreSQL RSS starts at approximately 99 GiB at the lowest load level and climbs to 110 GiB — substantially more than even HikariCP at peak. These measurements do not establish a cause. The result may reflect workload behaviour, PostgreSQL memory accounting, retained allocations, the way RSS was aggregated across PostgreSQL processes (which can cause shared memory pages to be counted more than once), or something specific to the PgBouncer session model. Further investigation using proportional set size, cgroup memory, and PostgreSQL memory instrumentation is needed before attributing a cause.
 
 ## How Backend Connections Are Used
 
-With OJP and PgBouncer both maintaining a similar number of real PostgreSQL connections, it is worth asking whether OJP uses those connections more efficiently.
+With OJP and PgBouncer both maintaining a similar number of real PostgreSQL connections, it is worth examining how much successful work each backend connection produces.
 
 ```mermaid
 xychart-beta
-    title "Successful RPS per database connection"
+    title "Successful RPS per DB connection (line order: HikariCP, OJP, PgBouncer)"
     x-axis ["16 RPS", "32 RPS", "48 RPS", "64 RPS"]
     y-axis "Successful RPS per DB connection" 0.0 --> 1.0
     line [0.102, 0.061, 0.067, 0.069]
@@ -126,45 +176,49 @@ xychart-beta
     line [0.315, 0.402, 0.459, 0.468]
 ```
 
-*Lines represent HikariCP (first), OJP (second), and PgBouncer (third).*
-
-At 64 RPS, OJP squeezes **0.75 successful requests per second out of each backend connection**, compared to 0.47 for PgBouncer and a mere 0.07 for HikariCP. The HikariCP number is so low because it has saturated its connection budget with 312 open connections while delivering relatively little successful work — most of those connections are either idle, blocked, or waiting for results that will timeout. OJP's higher efficiency per connection is what allows it to deliver more total successful work from the same number of real database sessions.
-
-## The Latency of What Succeeds
-
-The flip side of OJP's aggressive backpressure behaviour is that the requests which do succeed are served extremely quickly. The p95 latency chart for successful requests is perhaps the most dramatic chart in the entire benchmark.
-
-At 32 RPS, OJP's p95 successful latency is **49 milliseconds**. HikariCP's is 121,966 milliseconds — nearly two minutes — and PgBouncer's is 45,210 milliseconds. The gap narrows at higher loads (OJP reaches 230 ms at 64 RPS) but OJP's successful p95 remains orders of magnitude better than both alternatives. What is happening is that OJP rejects requests it cannot serve quickly, rather than queuing them for long periods. Requests that get through the queue are processed without the long waits caused by a saturated connection pool. HikariCP queues everything; some succeed eventually, but the tail latency for those successes is astronomical because they have been waiting behind a long queue of other requests that are also competing for exhausted connections.
+At 64 RPS, OJP delivers **0.75 successful requests per second per backend connection**, compared to 0.47 for PgBouncer and 0.07 for HikariCP. OJP's higher throughput per connection is consistent with its lower error rate and faster failure reporting: fewer backend connections are occupied serving requests that will ultimately be rejected, so a greater proportion of connection time goes toward requests that succeed.
 
 ## OJP's Own Resource Cost
 
-It would be incomplete to describe OJP's advantages without acknowledging its costs. OJP runs a three-node proxy tier on the JVM, and that tier consumes memory and CPU that the other approaches do not.
+OJP runs a three-node JVM proxy tier that carries resource costs not present in the other two topologies.
 
-The OJP proxy tier uses around **1,023 to 1,079 MiB** of RSS across its three nodes combined across the load range. PgBouncer's equivalent proxy tier — three PgBouncer nodes plus HAProxy — uses only about **56 MiB** total. So OJP's proxy tier is roughly 18 times heavier in memory than PgBouncer's.
+The OJP proxy tier uses around **1,023 to 1,079 MiB** of RSS across its three nodes combined. PgBouncer's equivalent tier — three PgBouncer nodes plus HAProxy — uses about **56 MiB** total, making the OJP proxy tier roughly 18 times heavier in memory. That difference is a real cost that should be factored into any deployment decision.
 
-That said, the JVM overhead is relatively stable and predictable. The OJP heap-used figure stays between **88 and 90 MiB** cluster-wide regardless of load level, meaning the JVM is not under memory pressure even at peak load. The committed heap — memory the JVM has reserved but not necessarily filled with live objects — sits around 150–161 MiB, which is the JVM pre-allocating space it may need. The proxy tier memory is an upfront cost, not a cost that scales dangerously with load.
+What is notable is that the OJP JVM overhead is stable across load levels. Heap used stays between **88 and 90 MiB** cluster-wide regardless of load, indicating the JVM is not under memory pressure at peak. The committed heap — memory the JVM has reserved for reuse — sits around 150–161 MiB. The proxy tier memory is an upfront cost that does not scale meaningfully with offered load.
 
-PostgreSQL CPU under OJP is also higher than under HikariCP in absolute terms: around 483% of a single virtual core at 64 RPS compared to 262% for HikariCP. That sounds concerning, but remember that OJP is simultaneously delivering 85% more successful work. When measured as CPU per successful request, the comparison looks much more favourable to OJP. PgBouncer's PostgreSQL CPU consumption is the highest of all — 933% at 64 RPS — which adds another data point suggesting that PgBouncer's interaction with PostgreSQL is less efficient than OJP's despite using a comparable connection count.
+PostgreSQL CPU under OJP is higher than under HikariCP in absolute terms: around 483% of a single virtual core at 64 RPS compared to 262% for HikariCP. OJP is simultaneously delivering 85% more successful work at that load level, so CPU per successful request is more favourable than the raw figure suggests. PgBouncer's PostgreSQL CPU is the highest of all three — 933% at 64 RPS — while also delivering lower successful throughput than OJP, which makes it the most CPU-intensive option per unit of useful work completed.
 
-## Summary of the Key Findings
+## Summary
 
-To make the relationships easier to compare at a glance, here is what the numbers say at the heaviest tested load of 64 aggregate requests per second:
+| Metric at 64 offered RPS | HikariCP | OJP | PgBouncer |
+|---|---|---|---|
+| Successful throughput | 21.4 RPS | 39.6 RPS | 26.2 RPS |
+| Error rate | 66.2% | 36.0% | 58.8% |
+| Mean failed-request latency | ~30.0 s | ~3.2 s | ~30.0 s |
+| p95 successful latency | ~149,000 ms | ~230 ms | ~48,644 ms |
+| Backend connections to PostgreSQL | 312 | 53 | 56 |
+| Reported PostgreSQL RSS† | 63 GiB | 24 GiB | 108–110 GiB |
+| Successful RPS per DB connection | 0.07 | 0.75 | 0.47 |
+| Proxy-tier RSS | — | ~1,050 MiB | ~56 MiB |
 
-```mermaid
-block-beta
-    columns 4
-    H["HikariCP"] O["OJP"] P["PgBouncer"] L[""]
-    h1["✅ 21.4 RPS delivered"] o1["🏆 39.6 RPS delivered"] p1["⚠️ 26.2 RPS delivered"] l1["Successful throughput"]
-    h2["❌ 66% error rate"] o2["🏆 36% error rate"] p2["❌ 59% error rate"] l2["Error rate"]
-    h3["❌ 30s to report failures"] o3["🏆 3.2s to report failures"] p3["❌ 30s to report failures"] l3["Failed request latency"]
-    h4["⚠️ 63 GiB PostgreSQL RSS"] o4["🏆 24 GiB PostgreSQL RSS"] p4["❌ 108 GiB PostgreSQL RSS"] l4["PostgreSQL memory"]
-    h5["❌ 312 DB connections"] o5["✅ 53 DB connections"] p5["✅ 56 DB connections"] l5["Backend connections"]
-```
+*† See Limitations.*
 
-The headline takeaway is that under pressure, OJP delivers roughly double the successful work of HikariCP, about 51% more than PgBouncer, keeps error rates meaningfully lower, fails fast when it does reject, uses dramatically less PostgreSQL memory, and squeezes far more work per connection. The tradeoff is a heavier proxy tier that adds approximately one GiB of RSS and some additional CPU on the OJP nodes themselves.
+In this benchmark configuration, centralized capacity control produced a materially different overload response from independently managed application pools. At the highest tested load, OJP delivered 39.6 successful requests per second, compared with 26.2 for PgBouncer and 21.4 for HikariCP, while reporting rejected requests substantially faster. It achieved this with approximately 53 PostgreSQL connections, at the cost of roughly 1 GiB of additional proxy-tier RSS.
+
+## Limitations and Open Questions
+
+These results apply to the tested workload, hardware, configurations, and load range. Several caveats are worth stating explicitly.
+
+The configurations were not designed to provide each technology with an identical backend connection count. They modelled intended production deployment patterns: independently sized local pools for HikariCP, and centrally bounded backend capacity for OJP and PgBouncer. The difference in database pressure — 312 connections for HikariCP versus roughly 53–56 for the others — is part of what each architecture produces, not an independently controlled variable. Additional experiments with equalized connection budgets would help separate architectural effects from configuration effects.
+
+The unexpectedly high PostgreSQL RSS measured during PgBouncer runs (99–110 GiB despite roughly 56 backend connections) is the most significant unexplained finding. The current data does not establish a cause, and this result should not be cited without the caveat that the measurement itself requires validation with proportional set size and cgroup memory tools.
+
+Only four discrete load levels were measured. The article describes how metrics change across those points but cannot characterize behaviour between them or beyond them.
+
+Five repetitions per load level provide a useful indication of reproducibility, but they are not sufficient for formal statistical testing. The full per-repetition values are available in `output/comparison-2026-07-16-065301-125192/report/repetition_values.csv` for downstream analysis.
 
 ## Methodology Notes
 
-Each data point in the charts is the **mean across five repeated runs** at that load level. The shaded bands in the original figures show the min/max spread across those five repetitions; narrower bands indicate more consistent behaviour from run to run. All latency figures come from HDR histogram logs merged across replicas, not from per-replica JSON summaries, which gives a precise view of the actual tail latency distribution. The benchmark used an **open-loop load generator**, meaning new requests are dispatched on a fixed schedule independent of whether previous ones have completed — this is a deliberate choice that prevents the load generator from automatically slowing down when the system is overloaded, which would mask exactly the failure modes this benchmark is designed to surface.
+Each data point is the mean across five repeated runs at the same load level. All latency figures come from HDR histogram logs merged across replicas — not per-replica JSON summaries — which provides a precise view of the full tail latency distribution across all client processes. The benchmark used an **open-loop load generator**, dispatching new requests on a fixed schedule independent of whether previous ones have completed. This is a deliberate choice: a closed-loop generator would automatically slow down when the system was overloaded, masking the failure modes this benchmark was designed to measure.
 
 The full results, raw data, and reproducible analysis scripts are available in this repository.
