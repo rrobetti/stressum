@@ -219,6 +219,6 @@ Five repetitions per load level provide a useful indication of reproducibility, 
 
 ## Methodology Notes
 
-Each data point is the mean across five repeated runs at the same load level. All latency figures come from HDR histogram logs merged across replicas — not per-replica JSON summaries — which provides a precise view of the full tail latency distribution across all client processes. The benchmark used an **open-loop load generator**, dispatching new requests on a fixed schedule independent of whether previous ones have completed. This is a deliberate choice: a closed-loop generator would automatically slow down when the system was overloaded, masking the failure modes this benchmark was designed to measure.
+Each data point is the mean across five repeated runs at the same load level. The benchmark used an **open-loop load generator**, dispatching new requests on a fixed schedule independent of whether previous ones have completed. This is a deliberate choice: a closed-loop generator would automatically slow down when the system was overloaded, masking the failure modes this benchmark was designed to measure.
 
 The full results, raw data, and reproducible analysis scripts are available in this repository.
