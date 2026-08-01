@@ -188,6 +188,34 @@ What is notable is that the OJP JVM overhead is stable across load levels. Heap 
 
 PostgreSQL CPU under OJP is higher than under HikariCP in absolute terms: around 483% of a single virtual core at 64 RPS compared to 262% for HikariCP. OJP is simultaneously delivering 85% more successful work at that load level, so CPU per successful request is more favourable than the raw figure suggests. PgBouncer's PostgreSQL CPU is the highest of all three — 933% at 64 RPS — while also delivering lower successful throughput than OJP, which makes it the most CPU-intensive option per unit of useful work completed.
 
+## System-Wide Resource Totals
+
+Viewing the proxy tier in isolation understates OJP's advantage. The table below sums PostgreSQL RSS and proxy-tier RSS to give the full database-plus-proxy infrastructure footprint at each load level.
+
+| Offered load | HikariCP total RSS | OJP total RSS | PgBouncer total RSS |
+|---|---|---|---|
+| 16 RPS | 20.3 GiB | 18.0 GiB | 97.1 GiB |
+| 32 RPS | 51.8 GiB | 19.0 GiB | 101.6 GiB |
+| 48 RPS | 59.5 GiB | 21.2 GiB | 106.8 GiB |
+| 64 RPS | 61.9 GiB | 25.1 GiB | 107.9 GiB |
+
+*(HikariCP has no proxy tier; its total equals its PostgreSQL RSS.)*
+
+At peak load, OJP's combined footprint of **25 GiB** is 2.5 times lower than HikariCP's 62 GiB and 4.3 times lower than PgBouncer's 108 GiB. The 1 GiB OJP proxy tier adds only a small amount to the total; the difference is driven almost entirely by how each architecture affects the PostgreSQL process footprint.
+
+The CPU picture is different. OJP's total CPU (PostgreSQL plus proxy) at 64 RPS is about 494%, compared to 262% for HikariCP and 934% for PgBouncer. In absolute terms OJP consumes roughly 1.9× more CPU than HikariCP. Normalising by successful throughput, however, the gap largely closes: at 64 RPS OJP uses approximately **12.5% of a virtual core per successful request**, compared to 12.2% for HikariCP and 35.6% for PgBouncer. OJP's higher absolute CPU consumption is proportional to the additional work it completes.
+
+| Offered load | HikariCP CPU/succ. RPS | OJP CPU/succ. RPS | PgBouncer CPU/succ. RPS |
+|---|---|---|---|
+| 16 RPS | 8.4% | 18.6% | 26.5% |
+| 32 RPS | 10.3% | 16.3% | 33.7% |
+| 48 RPS | 11.2% | 14.9% | 36.1% |
+| 64 RPS | 12.2% | 12.5% | 35.6% |
+
+*(Total CPU = PostgreSQL + proxy tier. HikariCP has no proxy tier.)*
+
+At low load the per-request CPU cost for OJP is higher than HikariCP's — the proxy tier JVM and OJP's internal routing carry a fixed overhead that matters more when requests are infrequent. As load rises and OJP routes more successful work, the two converge. At 64 RPS the difference is negligible: OJP achieves nearly identical CPU efficiency to HikariCP per successful request, at 2.5 times lower total memory cost.
+
 ## Summary
 
 | Metric at 64 offered RPS | HikariCP | OJP | PgBouncer |
