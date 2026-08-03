@@ -245,6 +245,18 @@ Only four discrete load levels were measured. The article describes how metrics 
 
 Five repetitions per load level provide a useful indication of reproducibility, but they are not sufficient for formal statistical testing. The full per-repetition values are available in `output/comparison-2026-07-16-065301-125192/report/repetition_values.csv` for downstream analysis.
 
+## Conclusion
+
+The results of this benchmark point to a broader architectural question: where should a system decide that it is full?
+
+With HikariCP's independent per-replica pools, that decision is made locally, inside each application instance. Each replica manages its own connection budget and queue. When load exceeds capacity across all replicas simultaneously, every pool fills independently, timeouts accumulate in parallel, and the database absorbs the full pressure of 312 concurrent connections. There is no global signal to slow intake.
+
+With PgBouncer sitting behind HAProxy, the proxy tier introduces a shared bottleneck that limits how many connections reach the database — 56 in this configuration. The connection count is controlled, but request queuing still occurs upstream of PgBouncer inside the application replicas, and the load balancer has no capacity-aware routing. When PgBouncer is saturated, requests wait at the application tier until they time out.
+
+Open J Proxy operates differently: it acts as a centralized capacity control plane. The application replicas dispatch work to the proxy, which enforces a global queue and rejects requests that exceed capacity immediately, before they consume database resources. This architecture produced fast, consistent rejection latency (~3.2 seconds at 64 RPS) rather than the 30-second timeout ceiling seen under the other two approaches. The total infrastructure memory footprint was also substantially lower — 25 GiB combined for Open J Proxy and PostgreSQL at peak, versus 62 GiB for HikariCP and 108 GiB for PgBouncer.
+
+The potential benefit of a control-plane model is not simply better throughput numbers. It is a qualitatively different failure mode: predictable, bounded, and recoverable. A system that rejects excess load in seconds and maintains stable throughput for accepted requests behaves differently under traffic spikes than one that absorbs excess load until timeouts cascade. Whether those properties matter in a given deployment depends on the workload, the SLOs, and the operational context — but they are properties worth measuring, and this benchmark offers one controlled measurement of them.
+
 ## Methodology Notes
 
 Each data point is the mean across five repeated runs at the same load level. The benchmark used an **open-loop load generator**, dispatching new requests on a fixed schedule independent of whether previous ones have completed. This is a deliberate choice: a closed-loop generator would automatically slow down when the system was overloaded, masking the failure modes this benchmark was designed to measure.
