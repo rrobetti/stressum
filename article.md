@@ -81,7 +81,7 @@ xychart-beta
 | 48 RPS | 20.81 | 35.86 | 25.71 |
 | 64 RPS | 21.44 | 39.60 | 26.23 |
 
-At 16 aggregate requests per second, all three deliver around 15.3–15.5 successful requests per second. At low load there is little contention and any connection strategy works adequately. At 64 RPS, Open J Proxy delivers **39.6 successful requests per second** while HikariCP produces 21.4 and PgBouncer 26.2. The results indicate that the HikariCP and PgBouncer configurations converted a smaller proportion of offered load into successful requests at higher load levels. Determining exactly where time was spent would require connection-state, wait-event, and query-level analysis beyond the scope of this benchmark.
+At 16 aggregate requests per second, all three deliver around 15.3–15.5 successful requests per second — there is little contention and any connection strategy works adequately at that level. At 64 RPS, Open J Proxy delivers **39.6 successful requests per second** while HikariCP produces 21.4 and PgBouncer 26.2. The results indicate that the HikariCP and PgBouncer configurations converted a smaller proportion of offered load into successful requests at higher load levels. Determining exactly where time was spent would require connection-state, wait-event, and query-level analysis beyond the scope of this benchmark.
 
 ## Errors
 
@@ -186,7 +186,7 @@ The Open J Proxy proxy tier uses around **1,023 to 1,079 MiB** of RSS across its
 
 What is notable is that the Open J Proxy JVM overhead is stable across load levels. Heap used stays between **88 and 90 MiB** cluster-wide regardless of load, indicating the JVM is not under memory pressure at peak. The committed heap — memory the JVM has reserved for reuse — sits around 150–161 MiB. The proxy tier memory is an upfront cost that does not scale meaningfully with offered load.
 
-PostgreSQL CPU under Open J Proxy is higher than under HikariCP in absolute terms: around 483% of a single CPU core at 64 RPS compared to 262% for HikariCP. Open J Proxy is simultaneously delivering 85% more successful work at that load level, so CPU per successful request is more favourable than the raw figure suggests. PgBouncer's PostgreSQL CPU is the highest of all three — 933% at 64 RPS — while also delivering lower successful throughput than Open J Proxy, which makes it the most CPU-intensive option per unit of useful work completed.
+PostgreSQL CPU under Open J Proxy is higher than under HikariCP in absolute terms: around 483% CPU at 64 RPS compared to 262% for HikariCP (where 100% represents one fully utilised core on the multi-core database node). Open J Proxy is simultaneously delivering 85% more successful work at that load level, so CPU per successful request is more favourable than the raw figure suggests. PgBouncer's PostgreSQL CPU is the highest of all three — 933% at 64 RPS — while also delivering lower successful throughput than Open J Proxy, which makes it the most CPU-intensive option per unit of useful work completed.
 
 ## System-Wide Resource Totals
 
@@ -203,18 +203,18 @@ Viewing the proxy tier in isolation understates Open J Proxy's advantage. The ta
 
 At peak load, Open J Proxy's combined footprint of **25 GiB** is 2.5 times lower than HikariCP's 62 GiB and 4.3 times lower than PgBouncer's 108 GiB. The 1 GiB Open J Proxy proxy tier adds only a small amount to the total; the difference is driven almost entirely by how each architecture affects the PostgreSQL process footprint.
 
-The CPU picture is different. Open J Proxy's total CPU (PostgreSQL plus proxy) at 64 RPS is about 494%, compared to 262% for HikariCP and 934% for PgBouncer. In absolute terms Open J Proxy consumes roughly 1.9× more CPU than HikariCP. Normalising by successful throughput, however, the gap largely closes: at 64 RPS Open J Proxy uses approximately **12.5% of a CPU core per successful request**, compared to 12.2% for HikariCP and 35.6% for PgBouncer. Open J Proxy's higher absolute CPU consumption is proportional to the additional work it completes.
+The CPU picture is different. Open J Proxy's total CPU (PostgreSQL plus proxy) at 64 RPS is about 494%, compared to 262% for HikariCP and 934% for PgBouncer. In absolute terms Open J Proxy consumes roughly 1.9× more CPU than HikariCP. Normalising by successful throughput, however, the gap largely closes: at 64 RPS Open J Proxy uses approximately **12.5% CPU per successful request** (where 100% = one core), compared to 12.2% for HikariCP and 35.6% for PgBouncer. Open J Proxy's higher absolute CPU consumption is proportional to the additional work it completes.
 
-| Offered load | HikariCP CPU/succ. RPS | Open J Proxy CPU/succ. RPS | PgBouncer CPU/succ. RPS |
+| Offered load | HikariCP CPU/succ. RPS (%) | Open J Proxy CPU/succ. RPS (%) | PgBouncer CPU/succ. RPS (%) |
 |---|---|---|---|
 | 16 RPS | 8.4% | 18.6% | 26.5% |
 | 32 RPS | 10.3% | 16.3% | 33.7% |
 | 48 RPS | 11.2% | 14.9% | 36.1% |
 | 64 RPS | 12.2% | 12.5% | 35.6% |
 
-*(Total CPU = PostgreSQL + proxy tier. HikariCP has no proxy tier.)*
+*(Total CPU = PostgreSQL + proxy tier. HikariCP has no proxy tier. 100% = one fully utilised core.)*
 
-At low load the per-request CPU cost for Open J Proxy is higher than HikariCP's — the proxy tier JVM and Open J Proxy's internal routing carry a fixed overhead that matters more when requests are infrequent. As load rises and Open J Proxy routes more successful work, the two converge. At 64 RPS the difference is negligible: Open J Proxy achieves nearly identical CPU efficiency to HikariCP per successful request, at 2.5 times lower total memory cost.
+At 16 RPS the per-request CPU cost for Open J Proxy is higher than HikariCP's — the proxy tier JVM and Open J Proxy's internal routing carry a fixed overhead that matters more when requests are infrequent. As load rises and Open J Proxy routes more successful work, the two converge. At 64 RPS the difference is negligible: Open J Proxy achieves nearly identical CPU efficiency to HikariCP per successful request, at 2.5 times lower total memory cost.
 
 ## Summary
 
