@@ -12,9 +12,8 @@ CAVEATS_MARKDOWN = """
   per-replica percentiles is **not** equivalent to a global percentile over all
   requests. When HDR logs are absent from the bundle, treat cross-replica latency
   summaries as **indicative** only.
-- **`stressum` (comparison mode):** When `.hlog` (or compatible) HDR logs are present,
-  comparison merges them **across replicas within each run** before plotting;
-  otherwise it falls back to the median of per-replica `summary.json` percentiles.
+- **`stressum` (comparison mode):** Comparison requires readable `.hlog` (or compatible)
+  HDR logs and merges them **across replicas within each run** before plotting.
 - **OJP / JVM memory:** Do not use `appRssMedian` from bench summaries as a proxy
   for live heap for OJP; prefer `heap_used_mb` from
   `node_metrics/proxy/*_jvm_metrics.csv` where available.
@@ -27,11 +26,11 @@ def hdr_status_note(hdr_count: int) -> str:
     if hdr_count == 0:
         return (
             "No HDR histogram files (`.hlog` / `.hdr`) were found under this run; "
-            "global tail latencies were not merged from raw histograms."
+            "comparison mode will fail because raw histogram merge is required."
         )
     return (
         f"Found {hdr_count} HDR-related file(s) under the run directory; "
         "single-run figures here still use per-replica `summary.json` percentiles. "
-        "Use `stressum` (comparison mode) to merge `.hlog` histograms across replicas for "
-        "cross-scenario plots."
+        "Use `stressum` (comparison mode) only when those histograms are readable so it can "
+        "merge them across replicas for cross-scenario plots."
     )

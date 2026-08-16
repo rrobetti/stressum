@@ -38,7 +38,7 @@ def main_compare(argv: list[str] | None = None) -> int:
         description=(
             "Compare two or more Stressar run bundles using stressum-comparison.json "
             "at the repository root (or current working directory if the checkout "
-            "cannot be detected). HDR merge across replicas per run when logs are present."
+            "cannot be detected). Requires readable raw HDR histograms for every run."
         ),
     )
     output_mode = parser.add_mutually_exclusive_group()

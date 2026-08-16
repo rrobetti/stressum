@@ -86,6 +86,15 @@ def _fairness_warnings(scenarios: list[dict[str, Any]]) -> list[str]:
     return warnings
 
 
+def _fatal_hdr_merge_warnings(warnings: list[str]) -> list[str]:
+    fatal_prefixes = (
+        "HDR path not a file:",
+        "Skipped HDR file",
+        "Could not add histogram",
+    )
+    return [warning for warning in warnings if warning.startswith(fatal_prefixes)]
+
+
 def run_comparison(
     config_path: Path,
     out_dir: Path,
@@ -135,14 +144,27 @@ def run_comparison(
         proxy_cpu = proxy_tier_cpu_summary(bundle)
         postgres_process = postgres_process_summary(bundle)
         total_footprint = total_resource_footprint_summary(bundle)
-        ref_p50 = agg.median_p50_ms
-        if bundle.hdr_paths:
+        if not bundle.hdr_paths:
             print(
-                f"    Merging HDR histograms ({len(bundle.hdr_paths)} file(s))...",
-                flush=True,
+                f"No HDR histogram files (`.hlog` / `.hdr`) found under {run_path}",
+                file=sys.stderr,
             )
-        merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths, ref_p50_ms=ref_p50)
-        latency_source = "hdr_merged" if merged is not None else "summary_json_median"
+            return 2, {}
+        print(
+            f"    Merging HDR histograms ({len(bundle.hdr_paths)} file(s))...",
+            flush=True,
+        )
+        merged, hdr_warnings = merge_run_histogram(bundle.hdr_paths)
+        fatal_hdr_warnings = _fatal_hdr_merge_warnings(hdr_warnings)
+        if merged is None or fatal_hdr_warnings:
+            print(
+                f"Could not merge raw HDR histograms for {run_path}",
+                file=sys.stderr,
+            )
+            for warning in fatal_hdr_warnings or hdr_warnings:
+                print(f"  - {warning}", file=sys.stderr)
+            return 2, {}
+        latency_source = "hdr_merged"
 
         ol_any, ol_missed, ol_delay = _open_loop_totals(bundle)
         meta = bundle.metadata or {}
@@ -175,7 +197,7 @@ def run_comparison(
             "median_replica_p50_ms": agg.median_p50_ms,
             "latency_percentiles_source": latency_source,
             "hdr_file_count": len(bundle.hdr_paths),
-            "hdr_paths_used": list(merged.hdr_paths_used) if merged else [],
+            "hdr_paths_used": list(merged.hdr_paths_used),
             "has_pg_metrics": has_pg,
             "has_db_proc_metrics": has_db_proc,
             "has_jvm_metrics": has_jvm,
@@ -210,14 +232,13 @@ def run_comparison(
         scenario_meta["total_rss_mb_peak"] = total_footprint["total_rss_mb_peak"]
         scenario_meta["total_rss_mb_mean"] = total_footprint["total_rss_mb_mean"]
         scenario_meta["total_rss_mb_p95"] = total_footprint["total_rss_mb_p95"]
-        if merged is not None:
-            scenario_meta["merged_latency_ms"] = {
-                "p50": merged.p50_ms,
-                "p95": merged.p95_ms,
-                "p99": merged.p99_ms,
-                "p999": merged.p999_ms,
-                "unit_divisor": merged.unit_divisor,
-            }
+        scenario_meta["merged_latency_ms"] = {
+            "p50": merged.p50_ms,
+            "p95": merged.p95_ms,
+            "p99": merged.p99_ms,
+            "p999": merged.p999_ms,
+            "unit_divisor": merged.unit_divisor,
+        }
 
         scenarios_payload.append(scenario_meta)
 
@@ -232,18 +253,11 @@ def run_comparison(
         row["comparison_label"] = label
         row["comparison_path_resolved"] = str(run_path)
         row["latency_percentiles_source"] = latency_source
-        if merged is not None:
-            row["merged_p50_ms"] = merged.p50_ms
-            row["merged_p95_ms"] = merged.p95_ms
-            row["merged_p99_ms"] = merged.p99_ms
-            row["merged_p999_ms"] = merged.p999_ms
-            row["hdr_unit_divisor"] = merged.unit_divisor
-        else:
-            row["merged_p50_ms"] = ""
-            row["merged_p95_ms"] = ""
-            row["merged_p99_ms"] = ""
-            row["merged_p999_ms"] = ""
-            row["hdr_unit_divisor"] = ""
+        row["merged_p50_ms"] = merged.p50_ms
+        row["merged_p95_ms"] = merged.p95_ms
+        row["merged_p99_ms"] = merged.p99_ms
+        row["merged_p999_ms"] = merged.p999_ms
+        row["hdr_unit_divisor"] = merged.unit_divisor
         scenario_rows.append(row)
 
         scenarios_plot.append(

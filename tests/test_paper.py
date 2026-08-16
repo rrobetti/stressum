@@ -7,6 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
+from hdrh.histogram import HdrHistogram
+from hdrh.log import HistogramLogWriter
 
 from stressum.aggregate import aggregate_bundle, postgres_process_summary, proxy_tier_cpu_summary
 from stressum.cli import main
@@ -39,6 +41,23 @@ def _scenario_entry(run_dir: Path, label: str) -> dict[str, object]:
         "total_footprint": None,
         "run_metadata": bundle.metadata or {},
     }
+
+
+def _write_single_interval_hlog(path: Path) -> None:
+    h = HdrHistogram(1, 60_000_000_000, 5)
+    for ns in (1_000_000, 2_000_000, 3_000_000):
+        h.record_value(ns)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        w = HistogramLogWriter(f)
+        w.output_log_format_version()
+        w.output_legend()
+        w.output_interval_histogram(h, 0.0, 1.0, 1_000_000.0)
+
+
+def _write_hdr_logs_for_run(run_dir: Path) -> None:
+    for replica_dir in sorted(run_dir.glob("replica-*")):
+        _write_single_interval_hlog(replica_dir / "latency.hlog")
 
 
 def _write_ojp_jvm_metrics(
@@ -182,6 +201,7 @@ def test_compare_generates_report_and_debug_outputs(
             run_name = f"{technology}-{index}"
             run_dir = tmp_path / run_name
             shutil.copytree(FIXTURE, run_dir)
+            _write_hdr_logs_for_run(run_dir)
             for replica_name in ("replica-0", "replica-1"):
                 summary_path = run_dir / replica_name / "summary.json"
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -249,6 +269,7 @@ def test_compare_generates_ojp_heap_outputs_and_rationale(
         run_name = f"ojp-{index}"
         run_dir = tmp_path / run_name
         shutil.copytree(FIXTURE, run_dir)
+        _write_hdr_logs_for_run(run_dir)
         for replica_name in ("replica-0", "replica-1"):
             summary_path = run_dir / replica_name / "summary.json"
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -307,6 +328,8 @@ def test_compare_handles_missing_metrics_safely(
     run_b = tmp_path / "hb"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    _write_hdr_logs_for_run(run_a)
+    _write_hdr_logs_for_run(run_b)
     for path in (run_a, run_b):
         pg_metrics = path / "node_metrics" / "pg_metrics.csv"
         if pg_metrics.exists():

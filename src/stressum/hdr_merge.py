@@ -1,16 +1,12 @@
 """Merge HdrHistogram logs across replica files into run-level percentiles."""
 
-from __future__ import annotations
-
-import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from hdrh.histogram import HdrHistogram
-from hdrh.log import HistogramLogReader
 
-# Java bench typically records latency in nanoseconds (up to 60 s trackable).
-_REF_HIST = HdrHistogram(1, 60_000_000_000, 5)
+_INTERVAL_RE = re.compile(r'^(?:Tag=[^,]*,)?([-\d.]+),([-\d.]+),([-\d.]+),(.*)$')
 
 
 def _looks_like_histogram_log(path: Path) -> bool:
@@ -33,30 +29,26 @@ def _load_histogram_log_merged(path: Path) -> HdrHistogram | None:
     if not _looks_like_histogram_log(path):
         return None
     merged = HdrHistogram(1, 60_000_000_000, 5)
-    reader = HistogramLogReader(str(path), _REF_HIST)
     try:
-        while True:
-            nxt = reader.add_next_interval_histogram(merged, 0.0, sys.maxsize, True)
-            if nxt is None:
-                break
+        with path.open("r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or line.startswith('"StartTimestamp"'):
+                    continue
+                match = _INTERVAL_RE.match(line)
+                if not match:
+                    continue
+                merged.decode_and_add(match.group(4))
     except (OSError, ValueError, TypeError, IndexError):
         return None
-    finally:
-        reader.close()
     if merged.get_total_count() == 0:
         return None
     return merged
 
 
-def _infer_ns_to_ms_divisor(hist: HdrHistogram, ref_p50_ms: float | None) -> float:
-    """Map raw histogram units to milliseconds using summary.json p50 as anchor."""
+def _infer_ns_to_ms_divisor(hist: HdrHistogram) -> float:
+    """Map raw histogram units to milliseconds using raw histogram magnitudes."""
     raw_p50 = float(hist.get_value_at_percentile(50.0))
-    if ref_p50_ms and ref_p50_ms > 0 and raw_p50 > 0:
-        for div in (1.0, 1e3, 1e6):
-            scaled = raw_p50 / div
-            ratio = scaled / ref_p50_ms
-            if 0.2 <= ratio <= 5.0:
-                return div
     if raw_p50 > 500_000:
         return 1e6
     if raw_p50 > 500:
@@ -78,8 +70,6 @@ class MergedLatency:
 
 def merge_run_histogram(
     hdr_paths: list[Path],
-    *,
-    ref_p50_ms: float | None,
 ) -> tuple[MergedLatency | None, list[str]]:
     """
     Merge all decodable histogram logs under one run into a single distribution.
@@ -112,14 +102,7 @@ def merge_run_histogram(
     if merged is None or merged.get_total_count() == 0:
         return None, warnings
 
-    div = _infer_ns_to_ms_divisor(merged, ref_p50_ms)
-    if ref_p50_ms and ref_p50_ms > 0:
-        raw = float(merged.get_value_at_percentile(50.0))
-        if abs(raw / div - ref_p50_ms) / ref_p50_ms > 0.25:
-            warnings.append(
-                "Merged HDR p50 differs from summary.json median p50 by >25%; "
-                "check histogram units vs summary latencyMs."
-            )
+    div = _infer_ns_to_ms_divisor(merged)
 
     def q(pct: float) -> float:
         return float(merged.get_value_at_percentile(pct)) / div
