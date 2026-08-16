@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from hdrh.histogram import HdrHistogram
+from hdrh.log import HistogramLogWriter
 
 from stressum.cli import (
     comparison_output_dir,
@@ -26,9 +28,6 @@ def _latest_comparison_out(fake_root: Path) -> Path:
 
 
 def _write_single_interval_hlog(path: Path) -> None:
-    from hdrh.histogram import HdrHistogram
-    from hdrh.log import HistogramLogWriter
-
     h = HdrHistogram(1, 60_000_000_000, 5)
     for ns in (1_000_000, 2_000_000, 3_000_000):
         h.record_value(ns)
@@ -38,6 +37,24 @@ def _write_single_interval_hlog(path: Path) -> None:
         w.output_log_format_version()
         w.output_legend()
         w.output_interval_histogram(h, 0.0, 1.0, 1_000_000.0)
+
+
+def _write_hdr_logs_for_run(run_dir: Path) -> None:
+    for replica_dir in sorted(run_dir.glob("replica-*")):
+        _write_single_interval_hlog(replica_dir / "latency.hlog")
+
+
+def _rewrite_hlog_interval_length_negative(path: Path) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for idx, line in enumerate(lines):
+        if not line or line.startswith("#") or line.startswith('"StartTimestamp"'):
+            continue
+        parts = line.split(",", 3)
+        assert len(parts) == 4
+        parts[1] = "-9223372036854776.000"
+        lines[idx] = ",".join(parts)
+        break
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _assert_unrecognized_subcommand(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
@@ -75,6 +92,8 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     run_b = cfg_dir / "cmp-b"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    _write_hdr_logs_for_run(run_a)
+    _write_hdr_logs_for_run(run_b)
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(
         json.dumps({"runs": [{"path": "cmp-a"}, {"path": "cmp-b", "label": "B"}]}),
@@ -85,7 +104,7 @@ def test_compare_writes_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     out = _latest_comparison_out(tmp_path)
     meta = json.loads((out / "comparison_metadata.json").read_text(encoding="utf-8"))
     assert len(meta["scenarios"]) == 2
-    assert meta["scenarios"][0]["latency_percentiles_source"] == "summary_json_median"
+    assert meta["scenarios"][0]["latency_percentiles_source"] == "hdr_merged"
     assert meta["scenarios"][1]["label"] == "B"
     assert (out / "comparison_summary.csv").is_file()
     assert (out / "report" / "summary_stats.csv").is_file()
@@ -216,6 +235,8 @@ def test_compare_writes_cross_technology_bar_charts(
     run_o = cfg_dir / "ojp-a"
     shutil.copytree(FIXTURE, run_h)
     shutil.copytree(FIXTURE, run_o)
+    _write_hdr_logs_for_run(run_h)
+    _write_hdr_logs_for_run(run_o)
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(
         json.dumps(
@@ -284,10 +305,8 @@ def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyP
     run_b = cfg_dir / "hb"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
-    _write_single_interval_hlog(run_a / "replica-0" / "latency.hlog")
-    _write_single_interval_hlog(run_a / "replica-1" / "latency.hlog")
-    _write_single_interval_hlog(run_b / "replica-0" / "latency.hlog")
-    _write_single_interval_hlog(run_b / "replica-1" / "latency.hlog")
+    _write_hdr_logs_for_run(run_a)
+    _write_hdr_logs_for_run(run_b)
     cfg_path = cfg_dir / "stressum-comparison.json"
     cfg_path.write_text(json.dumps({"runs": [{"path": "ha"}, {"path": "hb"}]}), encoding="utf-8")
     code = main([])
@@ -298,6 +317,25 @@ def test_compare_hdr_merged_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyP
         assert sc["latency_percentiles_source"] == "hdr_merged"
         ml = sc["merged_latency_ms"]
         assert abs(float(ml["p50"]) - 2.0) < 0.05
+
+
+def test_compare_reads_hdr_logs_with_negative_interval_length(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    for name in ("ha", "hb"):
+        run_dir = tmp_path / name
+        shutil.copytree(FIXTURE, run_dir)
+        _write_hdr_logs_for_run(run_dir)
+        for hdr_path in sorted(run_dir.glob("replica-*/latency.hlog")):
+            _rewrite_hlog_interval_length_negative(hdr_path)
+    (tmp_path / "stressum-comparison.json").write_text(
+        json.dumps({"runs": [{"path": "ha"}, {"path": "hb"}]}),
+        encoding="utf-8",
+    )
+
+    assert main([]) == 0
 
 
 def test_compare_missing_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -321,6 +359,8 @@ def test_compare_fairness_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     run_b = cfg_dir / "fb"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    _write_hdr_logs_for_run(run_a)
+    _write_hdr_logs_for_run(run_b)
     summ = json.loads((run_b / "replica-0" / "summary.json").read_text(encoding="utf-8"))
     summ["runInfo"]["workload"] = "W2_MIXED"
     (run_b / "replica-0" / "summary.json").write_text(json.dumps(summ), encoding="utf-8")
@@ -339,6 +379,8 @@ def test_compare_proxy_host_cpu_charts(tmp_path: Path, monkeypatch: pytest.Monke
     run_b = cfg_dir / "proxy-b"
     shutil.copytree(FIXTURE, run_a)
     shutil.copytree(FIXTURE, run_b)
+    _write_hdr_logs_for_run(run_a)
+    _write_hdr_logs_for_run(run_b)
     for run in (run_a, run_b):
         proxy_dir = run / "node_metrics" / "proxy"
         proxy_dir.mkdir(parents=True, exist_ok=True)
@@ -374,6 +416,7 @@ def test_compare_report_only_writes_report_folder(
     monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
     for name in ("ha", "hb"):
         shutil.copytree(FIXTURE, tmp_path / name)
+        _write_hdr_logs_for_run(tmp_path / name)
     (tmp_path / "stressum-comparison.json").write_text(
         json.dumps(
             {
@@ -390,3 +433,36 @@ def test_compare_report_only_writes_report_folder(
     assert (out / "report" / "summary_stats.csv").is_file()
     assert (out / "report" / "throughput_vs_load.png").is_file()
     assert not (out / "debug").exists()
+
+
+def test_compare_requires_hdr_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    for name in ("ha", "hb"):
+        shutil.copytree(FIXTURE, tmp_path / name)
+    (tmp_path / "stressum-comparison.json").write_text(
+        json.dumps({"runs": [{"path": "ha"}, {"path": "hb"}]}),
+        encoding="utf-8",
+    )
+
+    assert main([]) == 2
+
+
+def test_compare_fails_on_unreadable_hdr_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("stressum.cli.discover_stressum_repo_root", lambda: tmp_path)
+    for name in ("ha", "hb"):
+        run_dir = tmp_path / name
+        shutil.copytree(FIXTURE, run_dir)
+        _write_hdr_logs_for_run(run_dir)
+    (tmp_path / "hb" / "replica-1" / "latency.hlog").write_text(
+        "not an hdr log\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "stressum-comparison.json").write_text(
+        json.dumps({"runs": [{"path": "ha"}, {"path": "hb"}]}),
+        encoding="utf-8",
+    )
+
+    assert main([]) == 2

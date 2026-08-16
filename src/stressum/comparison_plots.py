@@ -1211,14 +1211,7 @@ def write_comparison_plots(
     """scenarios: dicts with keys label, bundle, agg, merged (MergedLatency|None)."""
     paths: dict[str, Path] = {}
 
-    hdr_all = all(s.get("merged") is not None for s in scenarios)
-    hdr_any = any(s.get("merged") is not None for s in scenarios)
-    if hdr_all:
-        lat_title = "Latency percentiles (HDR merged across replicas)"
-    elif hdr_any:
-        lat_title = "Latency percentiles (HDR merged where available; else summary.json median)"
-    else:
-        lat_title = "Latency percentiles (median of per-replica summary.json)"
+    lat_title = "Latency percentiles (HDR merged across replicas)"
 
     tech_groups = list(_group_scenarios_by_technology(scenarios))
     for tech_idx, (technology, group) in enumerate(tech_groups, start=1):
